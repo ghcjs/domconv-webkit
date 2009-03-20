@@ -1,0 +1,35 @@
+Name:           domconv
+Version:        0.1
+Author:         Dmitry Golubovsky
+Maintainer:     Dmitry Golubovsky <golubovsky@gmail.com>
+License:        BSD3
+License-File:   LICENSE
+Stability:      Experimental
+Category:       Utils
+
+Synopsis:       Converters of DOM IDL files (provided by the Web Cosortium) to Haskell.
+Description:    This package provides executables that convert IDL files provided by the
+                Web consortium to Haskell, mapping the interface inheritance to Haskell
+                type classes.
+                .
+                More on DOM interfaces vs. Haskell type classes here:
+                .
+                <http://www.haskell.org/haskellwiki/Haskell_in_web_browser#DOM_interfaces_vs._Haskell_type_classes>
+                .
+                The IDL parser based on parts of H/Direct code.               
+ 
+
+Build-Type:     Simple
+Build-Depends:  base > 3, filepath, mtl, utf8-env, utf8-string, haskell98, directory,
+                array, containers, haskell-src, cpphs
+
+-- Historical, CPS-style converter from ycr2js
+
+Executable:     domconv-cps
+Main-is:        domconv-cps.hs
+Hs-source-dirs: ., hdirect-0.21
+Other-Modules:  BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+
+
+
