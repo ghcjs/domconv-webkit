@@ -23,13 +23,17 @@ Build-Type:     Simple
 Build-Depends:  base > 3, filepath, mtl, utf8-env, utf8-string, haskell98, directory,
                 array, containers, haskell-src, cpphs
 
+Data-Dir:       W3C/DOM2
+Data-Files:     COPYRIGHT.html, idl/*.idl
+
 -- Historical, CPS-style converter from ycr2js
 
 Executable:     domconv-cps
 Main-is:        domconv-cps.hs
-Hs-source-dirs: ., hdirect-0.21
+Hs-source-dirs: ., hdirect-0.21, legacy-js
 Other-Modules:  BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
                 Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+Extensions:     ScopedTypeVariables
 
 
 

@@ -1,0 +1,35 @@
+// This file has its source at: http://www.w3.org/TR/XMLHttpRequest/
+// It has been modified to be used with DOM Level 2 definitions
+// adopted for ycr2js
+
+// Changes made:
+// * XMLHttpRequest is a subclass of Element to work with Event interface
+// * `open' and `send' methods are renamed to remove method name multiplicity
+// * added #pragma namespace ("proprietary" to ycr2js) for correct Haskell module naming
+// * renamed formal arguments (data) which conflict with Haskell reserved words
+
+#include "dom.idl"
+
+#pragma prefix "dom.w3c.org"
+
+module XMLHTTP {
+
+interface XMLHttpRequest : Element {
+  readonly attribute unsigned short  readyState;
+  void               openSync(in DOMString method, in DOMString url) context("open");
+  void               openAsync(in DOMString method, in DOMString url, in boolean async) context("open");
+  void               openUser(in DOMString method, in DOMString url, in boolean async, in DOMString user) context("open");
+  void               openAuth(in DOMString method, in DOMString url, in boolean async, in DOMString user, in DOMString password) context("open");
+  void               setRequestHeader(in DOMString header, in DOMString value);
+  void               sendString(in DOMString str) context("send");
+  void               sendDocument(in Document doc) context("send");
+  void               abort();
+  DOMString          getAllResponseHeaders();
+  DOMString          getResponseHeader(in DOMString header);
+  readonly attribute DOMString       responseText;
+  readonly attribute Document        responseXML;
+  readonly attribute unsigned short  status;
+  readonly attribute DOMString       statusText;
+};
+};
+

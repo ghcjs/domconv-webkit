@@ -325,7 +325,7 @@ lex_guid' :: (IDLToken -> LexM a) -> LexM a
 lex_guid' cont = do
   cs <- getStream
   case readHex cs of
-     [((_::Int),cs1)] -> 
+     [((z::Int),cs1)] -> 
        case cs1 of
         ('-':cs2) -> -- this may just be the start of a GUID.
             case lex_guid (takeWhile (isHexDigit) cs) cs2 of

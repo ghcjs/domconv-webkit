@@ -4,11 +4,13 @@
 
 module Main where
 
-import System.Environment
+import Prelude hiding (putStrLn)
+import System.Environment.UTF8
 import System.Directory
-import System.FilePath.Version_0_09
+import System.FilePath
 import System.Exit
-import System.IO
+import System.IO (stderr, stdin, openFile, IOMode (..))
+import System.IO.UTF8
 import Control.Monad
 import Data.Maybe
 import Data.Either
@@ -25,8 +27,8 @@ import qualified IDLSyn as I
 import IDLUtils
 import Literal
 import BasicTypes
---import JS.Jcode
---import JS.Show
+import JS.Jcode
+import JS.Show
 import SplitBounds
 
 main = do
