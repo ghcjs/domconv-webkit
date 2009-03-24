@@ -23,6 +23,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified OmgParser
 import LexM
+import Literal
 import qualified IDLSyn as I
 import IDLUtils
 import BasicTypes
@@ -60,7 +61,6 @@ procopts opts = do
   mapM showMod x
   putStrLn "--}"
   let prntmap = mkParentMap x
---   mapM (putStrLn . show) (M.assocs prntmap)
   let valmsg = valParentMap prntmap
   when (length valmsg > 0) $ do
     mapM_ (hPutStrLn stderr) valmsg
@@ -382,6 +382,12 @@ intfOnly :: I.Defn -> Bool
 intfOnly (I.Interface _ _ cldefs) = True
 intfOnly _ = False
 
+-- A filter to select only constant definitions
+
+constOnly :: I.Defn -> Bool
+constOnly (I.Constant _ _ _ _) = True
+constOnly _ = False
+
 -- Collect all operations defined in an interface
 
 collectOps :: I.Defn -> [I.Defn]
@@ -390,6 +396,15 @@ collectOps (I.Interface _ _ cldefs) =
   filter opsOnly cldefs
 
 collectOps _ = []
+
+-- Collect all constants defined in an interface
+
+collectConst :: I.Defn -> [I.Defn]
+
+collectConst (I.Interface _ _ cldefs) = 
+  filter constOnly cldefs
+
+collectConst _ = []
 
 -- Collect all attributes defined in an interface
 
@@ -418,19 +433,21 @@ intf2maker intf@(I.Interface (I.Id iid) _ _) =
     tag -> [mktsig, mkimpl] where
       mkimpl = 
         let defmaker = iid ++ "|mk" ++ renameMod tag
-            flipv = H.HsVar (mkUIdent "flip")
-            crelv = H.HsVar (mkUIdent "createElement")
+            flipv = mkVar "flip"
+            crelv = mkVar "createElement"
             tagv  = H.HsLit (H.HsString tag)
             rhs   = H.HsUnGuardedRhs (H.HsApp flipv (H.HsApp crelv tagv))
             match = H.HsMatch nullLoc (H.HsIdent defmaker) [] rhs [] in
         H.HsFunBind [match]
       mktsig = 
         let monadtv = mkTIdent "mn"
+            exprtv = mkTIdent "Expression"
             defmaker = iid ++ "|mk" ++ renameMod tag
             parms = [H.HsIdent "a"]
             actx = (mkUIdent (classFor "HTMLDocument"),[mkTIdent "a"])
             monadctx = (mkUIdent "Monad",[monadtv])
-            tpsig = mkTsig parms (H.HsTyApp monadtv (mkTIdent (typeFor iid)))
+            tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+                           (H.HsTyApp monadtv $ H.HsTyApp exprtv (mkTIdent (typeFor iid)))
             retts = H.HsQualType (monadctx : actx : []) tpsig in
         H.HsTypeSig nullLoc [H.HsIdent defmaker] retts
 
@@ -480,10 +497,11 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
       mkattr (I.Attribute [iatt] b tat) ++ mkattr (I.Attribute iats b tat)
     mksetter iid iat tat = [stsig iid iat tat, simpl iid iat]
     monadtv = mkTIdent "mn"
+    exprtv = mkTIdent "Expression"
     monadctx = (mkUIdent "Monad",[monadtv])
     simpl iid iat =
       let defset = iid ++ "|set'" ++ iat
-          unssetp = H.HsVar (mkUIdent "unsafeSetProperty")
+          unssetp = mkVar "unsafeSetProperty"
           propnam = H.HsLit (H.HsString iat)
           rhs = H.HsUnGuardedRhs (H.HsApp unssetp propnam)
           match = H.HsMatch nullLoc (H.HsIdent defset) [] rhs [] in
@@ -494,13 +512,14 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           parm = [I.Param (I.Id "val") tat [I.Mode In]]
           parms = (map (fst . tyParm) parm) ++ [H.HsIdent "zz"]
           contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet ityp
-          tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet ityp))
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+                         (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet ityp))
           retts = H.HsQualType (monadctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat]
     gimpl iid iat = 
       let defget = iid ++ "|get'" ++ iat
-          unsgetp = H.HsVar (mkUIdent "unsafeGetProperty")
+          unsgetp = mkVar "unsafeGetProperty"
           propnam = H.HsLit (H.HsString iat)
           rhs = H.HsUnGuardedRhs (H.HsApp unsgetp propnam)
           match = H.HsMatch nullLoc (H.HsIdent defget) [] rhs [] in
@@ -509,7 +528,8 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
       let defget = iid ++ "|get'" ++ iat
           parms = [H.HsIdent "this"]
           thisctx = (mkUIdent (classFor iid),[mkTIdent "this"])
-          tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet tat))
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+                         (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet tat))
           retts = H.HsQualType (monadctx : thisctx : ctxRet tat) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
 
@@ -519,62 +539,78 @@ intf2attr _ = []
 -- Methods are lifted to top level. Declared argument types are converted
 -- into type constraints unless they are of primitive types. First argument
 -- always gets a type of the interface where the method is declared.
--- Only `In' parameters are supported at this time.
+-- Only `In' parameters are supported at this time. The "this" argument
+-- goes last to make monadic composition of actions easier.
 
 intf2meth :: I.Defn -> [H.HsDecl]
 
 intf2meth intf@(I.Interface _ _ cldefs) =
-  concat $ map mkmeth $ collectOps intf where
+  (concat $ map mkmeth $ collectOps intf) ++ 
+  (concat $ map mkconst $ collectConst intf) where
     getDefHs op = getDef op
     getDefJs op@(I.Operation _ _ _ mbctx) = case mbctx of
       Nothing -> getDef op
       Just [] -> getDef op
       Just (s:_) -> s
+    mkconst cn@(I.Constant (I.Id cid) _ _ (I.Lit (IntegerLit (ILit base val)))) =
+      let defcn = getDef intf ++ "|c" ++ cid
+          match = H.HsMatch nullLoc (H.HsIdent defcn) [] crhs []
+          crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
+      in  [H.HsFunBind [match]]
     mkmeth op = tsig op : timpl op
     tsig op@(I.Operation (I.FunId _ _ parm) optype _ _) = 
       let monadtv = mkTIdent "mn"
+          exprtv = mkTIdent "Expression"
           defop = getDef intf ++ "|" ++ getDefHs op
-          parms = (H.HsIdent "this") : (map (fst . tyParm) parm)
+          parms =  (map (fst . tyParm) parm) ++ [H.HsIdent "this"]
           contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet optype
           monadctx = (mkUIdent "Monad",[monadtv])
           thisctx = (mkUIdent (classFor $ getDef intf),[mkTIdent "this"])
-          tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet optype))
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+                         (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet optype))
           retts = H.HsQualType (monadctx : thisctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
     timpl op@(I.Operation (I.FunId _ _ parm) optype _ _) =
       let defop = getDef intf ++ "|" ++ getDefHs op
-          defop' = defop ++ "'"
-          returnv = H.HsVar (mkUIdent "return")
-          parms = map H.HsPVar (take (1 + length parm) azHIList)
-          parmv = map (H.HsVar . H.UnQual) 
-                      (H.HsIdent (getDefHs op ++ "'") : take (1 + length parm) azHIList)
-          mkApp [] = error "Application with empty list"
-          mkApp [a] = a
-          mkApp (a:as) = H.HsApp a (mkApp as)
-          rhs' = H.HsUnGuardedRhs (H.HsApp (H.HsVar (mkUIdent "unsafeJS"))
-                                           (H.HsLit (H.HsString mbody)))
-          mbody = (mkMethBody (getDefJs op) (take (1 + length parm) azList)) ++ ";"
-          rhs = H.HsUnGuardedRhs (mkApp [returnv, H.HsParen $ mkApp parmv])
+          parms = map H.HsPVar (take (length parm) azHIList ++ [H.HsIdent "thisp"])
+          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
-          match' = H.HsMatch nullLoc (H.HsIdent defop') parms rhs' [] in
-      [H.HsFunBind [match], H.HsFunBind [match']]
+      in  [H.HsFunBind [match]]
 
 intf2meth _ = []
 
--- Create a Javascript body for a method
+-- Create a Javascript body for a method. Template for a method is:
+-- method a1 ... an this = do
+--   let et = undefined :: zz
+--       r = DotRef et (this /\ et) (Id et "methodname")
+--   return (CallExpr et r [a1 /\ et, ... an /\ et]
+-- where zz is a type variable or type name of the method return type.
 
-mkMethBody :: String -> [String] -> String
+mkMethod :: String -> [H.HsPat] -> H.HsType -> H.HsExp
 
-mkMethBody _ [] = error $ "A method should have at least one argument"
+mkMethod meth args rett = H.HsDo [let1] where
+  let1 = H.HsLetStmt [
+           H.HsFunBind [
+             H.HsMatch nullLoc 
+                       (H.HsIdent "et") 
+                       [] 
+                       (H.HsUnGuardedRhs $ H.HsExpTypeSig nullLoc
+                                                          (mkVar "undefined")
+                                                          (H.HsQualType [] rett)) 
+                       []
+            ]
+          ]
 
-mkMethBody meth args = "<method body: " ++ meth ++ concat args ++ ">"
+-- Build a variable name
+
+mkVar = H.HsVar . mkUIdent
 
 -- Build a method's type signature
 
-mkTsig :: [H.HsName] -> H.HsType -> H.HsType
+mkTsig :: [H.HsType] -> H.HsType -> H.HsType
 
 mkTsig [] a = a
-mkTsig (p:ps) a = H.HsTyFun (H.HsTyVar p) (mkTsig ps a)
+mkTsig (p:ps) a = H.HsTyFun p (mkTsig ps a)
 
 -- A helper function to produce a type identifier
 
@@ -591,8 +627,8 @@ tyRet :: I.Type -> H.HsType
 tyRet (I.TyName c Nothing) = case (asIs c) of
   Nothing -> mkTIdent "zz"
   Just c' -> mkTIdent c'
-tyRet (I.TyInteger _) = mkTIdent "Int"
-tyRet (I.TyApply _ (I.TyInteger _)) = mkTIdent "Int"
+tyRet (I.TyInteger _) = mkTIdent "Double"
+tyRet (I.TyApply _ (I.TyInteger _)) = mkTIdent "Double"
 tyRet  I.TyVoid  = H.HsTyTuple []
 tyRet t = error $ "Return type " ++ (show t)
 
@@ -616,8 +652,8 @@ tyParm (I.Param (I.Id p) ptype [I.Mode In]) =
     I.TyName c Nothing -> case asIs c of
       Just cc ->  (H.HsIdent cc, [])
       Nothing -> (hsidp, [(mkUIdent $ classFor c, [mkTIdent p])])
-    I.TyInteger _ -> (H.HsIdent "Int",[])
-    I.TyApply _ (I.TyInteger _) -> (H.HsIdent "Int",[])
+    I.TyInteger _ -> (H.HsIdent "Double",[])
+    I.TyApply _ (I.TyInteger _) -> (H.HsIdent "Double",[])
     t -> error $ "Param type " ++ (show t)
 
 tyParm (I.Param _ _ _) = error "Unsupported parameter attributes"
@@ -628,6 +664,7 @@ asIs :: String -> Maybe String
 
 asIs "DOMString" = Just "String"
 asIs "Bool"      = Just "Bool"
+asIs "Int"       = Just "Double"
 asIs _ = Nothing
 
 
