@@ -287,7 +287,7 @@ mod2mod :: DOMState -> I.Defn -> H.HsModule
 mod2mod st md@(I.Module _ moddefs) = 
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
     modid' = renameMod $ getDef md
-    imps = map mkModImport (map H.Module (["Control.Monad"] ++ imp st))
+    imps = map mkModImport (map H.Module (["Control.Monad", "Language.JWCC.JSTypes"] ++ imp st))
     intfs = filter intfOnly moddefs
     eqop op1 op2 = getDef op1 == getDef op2
     decls = types ++ classes ++ instances ++ methods ++ attrs ++ makers
@@ -518,12 +518,13 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
                          (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet ityp))
           retts = H.HsQualType (monadctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
-    mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat]
-    gimpl iid iat = 
+    mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat tat]
+    gimpl iid iat tat = 
       let defget = iid ++ "|get'" ++ iat
-          unsgetp = mkVar "unsafeGetProperty"
+          unsgetp = mkVar "getProperty"
           propnam = H.HsLit (H.HsString iat)
-          rhs = H.HsUnGuardedRhs (H.HsApp unsgetp propnam)
+          undef = H.HsExpTypeSig nullLoc (mkVar "undefined") (H.HsQualType [] (tyRet tat))
+          rhs = H.HsUnGuardedRhs (H.HsApp (H.HsApp unsgetp propnam) (H.HsParen undef))
           match = H.HsMatch nullLoc (H.HsIdent defget) [] rhs [] in
       H.HsFunBind [match]
     gtsig iid iat tat = 
