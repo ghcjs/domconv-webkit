@@ -364,6 +364,8 @@ name2ctxt name = (mkUIdent $ classFor name, [H.HsTyVar $ head azHIList])
 
 mkUIdent = H.UnQual . H.HsIdent
 
+mkSymbol = H.UnQual . H.HsSymbol
+
 -- A filter to select only operations (methods)
 
 opsOnly :: I.Defn -> Bool
@@ -588,7 +590,9 @@ intf2meth _ = []
 
 mkMethod :: String -> [H.HsPat] -> H.HsType -> H.HsExp
 
-mkMethod meth args rett = H.HsDo [let1] where
+mkMethod meth args rett = H.HsDo [let1, let2, ret] where
+  cast ts (H.HsPVar (H.HsIdent hn)) = 
+    H.HsInfixApp (mkVar hn) (H.HsQVarOp $ mkSymbol "/\\") (mkVar ts)
   let1 = H.HsLetStmt [
            H.HsFunBind [
              H.HsMatch nullLoc 
@@ -600,6 +604,36 @@ mkMethod meth args rett = H.HsDo [let1] where
                        []
             ]
           ]
+  let2 = H.HsLetStmt [
+           H.HsFunBind [
+             H.HsMatch nullLoc
+                       (H.HsIdent "r")
+                       []
+                       (H.HsUnGuardedRhs $ H.HsApp (
+                                             H.HsApp (
+                                               H.HsApp (mkVar "DotRef") 
+                                                       (mkVar "et"))
+                                               (H.HsParen $ 
+                                                  H.HsInfixApp (mkVar "this")
+                                                               (H.HsQVarOp $ mkSymbol "/\\")
+                                                               (mkVar "et")))
+                                             (H.HsParen $
+                                                H.HsApp (
+                                                  H.HsApp (mkVar "Id") 
+                                                          (mkVar "et")) 
+                                                  (H.HsLit $ H.HsString meth)))
+                       []
+             ]
+           ]
+  ret = H.HsQualifier $ 
+          H.HsApp (mkVar "return")
+                  (H.HsParen $
+                     H.HsApp (
+                       H.HsApp (
+                         H.HsApp (mkVar "CallExpr")
+                                 (mkVar "et"))
+                         (mkVar "r"))
+                       (H.HsList $ map (cast "et") args))
 
 -- Build a variable name
 
