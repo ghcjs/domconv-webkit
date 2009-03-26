@@ -493,7 +493,7 @@ intf2attr :: I.Defn -> [H.HsDecl]
 intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
   concat $ map mkattr $ collectAttrs intf where
     mkattr (I.Attribute [] _ _) = []
-    mkattr (I.Attribute [I.Id iat] False tat) = mksetter iid iat tat ++ mkgetter iid iat tat
+    mkattr (I.Attribute [I.Id iat] False tat) = {-mksetter iid iat tat ++-} mkgetter iid iat tat
     mkattr (I.Attribute [I.Id iat] True  tat) = mkgetter iid iat tat
     mkattr (I.Attribute (iatt:iats) b tat) = 
       mkattr (I.Attribute [iatt] b tat) ++ mkattr (I.Attribute iats b tat)
@@ -503,7 +503,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     monadctx = (mkUIdent "Monad",[monadtv])
     simpl iid iat =
       let defset = iid ++ "|set'" ++ iat
-          unssetp = mkVar "unsafeSetProperty"
+          unssetp = mkVar "setProperty"
           propnam = H.HsLit (H.HsString iat)
           rhs = H.HsUnGuardedRhs (H.HsApp unssetp propnam)
           match = H.HsMatch nullLoc (H.HsIdent defset) [] rhs [] in
@@ -522,10 +522,11 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     gimpl iid iat tat = 
       let defget = iid ++ "|get'" ++ iat
           unsgetp = mkVar "getProperty"
+          parm = H.HsPVar $ H.HsIdent "thisp"
           propnam = H.HsLit (H.HsString iat)
           undef = H.HsExpTypeSig nullLoc (mkVar "undefined") (H.HsQualType [] (tyRet tat))
-          rhs = H.HsUnGuardedRhs (H.HsApp (H.HsApp unsgetp propnam) (H.HsParen undef))
-          match = H.HsMatch nullLoc (H.HsIdent defget) [] rhs [] in
+          rhs = H.HsUnGuardedRhs $ mkGetter iat parm (tyRet tat)
+          match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
       H.HsFunBind [match]
     gtsig iid iat tat = 
       let defget = iid ++ "|get'" ++ iat
@@ -536,8 +537,52 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           retts = H.HsQualType (monadctx : thisctx : ctxRet tat) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
 
-
 intf2attr _ = []
+
+-- Create a Javascript body for a getter. Template for a getter is:
+-- get'prop this = do
+--   let et = undefined :: zz
+--       r = DotRef et (this /\ et) (Id et "propname")
+--   return r
+-- where zz is a type variable or type name of the method return type.
+
+mkGetter :: String -> H.HsPat -> H.HsType -> H.HsExp
+
+mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
+  let1 = H.HsLetStmt [
+           H.HsFunBind [
+             H.HsMatch nullLoc 
+                       (H.HsIdent "et") 
+                       [] 
+                       (H.HsUnGuardedRhs $ H.HsExpTypeSig nullLoc
+                                                          (mkVar "undefined")
+                                                          (H.HsQualType [] rett)) 
+                       []
+            ]
+          ]
+  let2 = H.HsLetStmt [
+           H.HsFunBind [
+             H.HsMatch nullLoc
+                       (H.HsIdent "r")
+                       []
+                       (H.HsUnGuardedRhs $ H.HsApp (
+                                             H.HsApp (
+                                               H.HsApp (mkVar "DotRef") 
+                                                       (mkVar "et"))
+                                               (H.HsParen $ 
+                                                  H.HsInfixApp (mkVar "thisp")
+                                                               (H.HsQVarOp $ mkSymbol "/\\")
+                                                               (mkVar "et")))
+                                             (H.HsParen $
+                                                H.HsApp (
+                                                  H.HsApp (mkVar "Id") 
+                                                          (mkVar "et")) 
+                                                  (H.HsLit $ H.HsString prop)))
+                       []
+             ]
+           ]
+  ret = H.HsQualifier $ 
+          H.HsApp (mkVar "return") (mkVar "r")
 
 -- Methods are lifted to top level. Declared argument types are converted
 -- into type constraints unless they are of primitive types. First argument
@@ -592,6 +637,7 @@ intf2meth _ = []
 mkMethod :: String -> [H.HsPat] -> H.HsType -> H.HsExp
 
 mkMethod meth args rett = H.HsDo [let1, let2, ret] where
+  args' = (reverse . tail . reverse) args
   cast ts (H.HsPVar (H.HsIdent hn)) = 
     H.HsInfixApp (mkVar hn) (H.HsQVarOp $ mkSymbol "/\\") (mkVar ts)
   let1 = H.HsLetStmt [
@@ -615,7 +661,7 @@ mkMethod meth args rett = H.HsDo [let1, let2, ret] where
                                                H.HsApp (mkVar "DotRef") 
                                                        (mkVar "et"))
                                                (H.HsParen $ 
-                                                  H.HsInfixApp (mkVar "this")
+                                                  H.HsInfixApp (mkVar "thisp")
                                                                (H.HsQVarOp $ mkSymbol "/\\")
                                                                (mkVar "et")))
                                              (H.HsParen $
@@ -634,7 +680,7 @@ mkMethod meth args rett = H.HsDo [let1, let2, ret] where
                          H.HsApp (mkVar "CallExpr")
                                  (mkVar "et"))
                          (mkVar "r"))
-                       (H.HsList $ map (cast "et") args))
+                       (H.HsList $ map (cast "et") args'))
 
 -- Build a variable name
 
