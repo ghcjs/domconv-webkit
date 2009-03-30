@@ -1,0 +1,82 @@
+
+  interface HTMLSubElement : HTMLElement {
+  };
+
+  interface HTMLSupElement : HTMLElement {
+  };
+
+  interface HTMLSpanElement : HTMLElement {
+  };
+
+  interface HTMLBdoElement : HTMLElement {
+  };
+
+  interface HTMLIElement : HTMLElement {
+  };
+
+  interface HTMLBElement : HTMLElement {
+  };
+
+  interface HTMLUElement : HTMLElement {
+  };
+
+  interface HTMLSElement : HTMLElement {
+  };
+
+  interface HTMLStrikeElement : HTMLElement {
+  };
+
+  interface HTMLBigElement : HTMLElement {
+  };
+
+  interface HTMLSmallElement : HTMLElement {
+  };
+
+  interface HTMLEmElement : HTMLElement {
+  };
+
+  interface HTMLStrongElement : HTMLElement {
+  };
+
+  interface HTMLDfnElement : HTMLElement {
+  };
+
+  interface HTMLCodeElement : HTMLElement {
+  };
+
+  interface HTMLSampElement : HTMLElement {
+  };
+
+  interface HTMLKbdElement : HTMLElement {
+  };
+
+  interface HTMLVarElement : HTMLElement {
+  };
+
+  interface HTMLCiteElement : HTMLElement {
+  };
+
+  interface HTMLAcronymElement : HTMLElement {
+  };
+
+  interface HTMLAbbrElement : HTMLElement {
+  };
+
+  interface HTMLDdElement : HTMLElement {
+  };
+
+  interface HTMLDtElement : HTMLElement {
+  };
+
+  interface HTMLNoframesElement : HTMLElement {
+  };
+
+  interface HTMLNoscriptElement : HTMLElement {
+  };
+
+  interface HTMLAddressElement : HTMLElement {
+  };
+
+  interface HTMLCenterElement : HTMLElement {
+  };
+

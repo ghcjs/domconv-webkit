@@ -68,8 +68,7 @@ procopts opts = do
   let modst = DOMState {
          pm = prntmap
         ,imp = []
-        ,ns = ""
-        ,modpref = ""
+        ,ns = "Data.DOM." -- this will be the default namespace unless a pragma namespace is used.
         ,procmod = []
         ,convlog = []
       }
@@ -181,7 +180,7 @@ domLoop st (def : defs) = case def of
   I.Module id moddef -> 
     let prmod = mod2mod st (I.Module id' moddef)
         modn = ns st ++ (renameMod $ concat $ intersperse "." $ 
-                           reverse $ parts ( == '.') (getDef def ++ modpref st))
+                           reverse $ parts ( == '.') (getDef def))
         id' = I.Id modn
         imp' = modn : imp st
         modl = prmod : (procmod st) in
@@ -193,13 +192,6 @@ domLoop st (def : defs) = case def of
 -- Modify DOMState based on a pragma encountered
 
 prgm2State :: DOMState -> String -> DOMState
-
-{--
-prgm2State st ('p':'r':'e':'f':'i':'x':pref) =
-  let prefst = read (dropWhile isSpace pref)
-      dot = if length prefst == 0 then "" else "." in
-  st {modpref = dot ++ prefst}
---}
 
 prgm2State st ('n':'a':'m':'e':'s':'p':'a':'c':'e':nns) = 
   let nnsst = read (dropWhile isSpace nns)
@@ -269,7 +261,6 @@ data DOMState = DOMState {
    pm :: M.Map String [Either String String] -- inheritance map
   ,imp :: [String]                           -- import list
   ,ns :: String                              -- output module namespace (#pragma namespace)
-  ,modpref :: String                         -- module name prefix (#pragma prefix)
   ,procmod :: [H.HsModule]                   -- modules already processed
   ,convlog :: [String]                       -- conversion messages
 } deriving (Show)
@@ -286,8 +277,12 @@ mod2mod :: DOMState -> I.Defn -> H.HsModule
 
 mod2mod st md@(I.Module _ moddefs) = 
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
+    modlst = ["Control.Monad"
+             ,"WebBits.JavaScript"
+             ,"Language.JSMW.JSTypes"
+             ,"Language.JSMW.Monad"]
     modid' = renameMod $ getDef md
-    imps = map mkModImport (map H.Module (["Control.Monad", "Language.JWCC.JSTypes"] ++ imp st))
+    imps = map mkModImport (map H.Module (modlst ++ imp st))
     intfs = filter intfOnly moddefs
     eqop op1 op2 = getDef op1 == getDef op2
     decls = types ++ classes ++ instances ++ methods ++ attrs ++ makers
@@ -333,16 +328,6 @@ intf2type intf@(I.Interface _ _ _) =
   let typename = H.HsIdent (typeFor $ getDef intf) in
   [H.HsDataDecl nullLoc [] typename []
     [H.HsConDecl nullLoc typename []] []]
-
-{--
-
-intf2type intf@(I.Interface _ _ _) = 
-  let typename = H.HsIdent (typeFor $ getDef intf) in
-  [H.HsNewTypeDecl nullLoc [] typename [] 
-    (H.HsConDecl nullLoc typename
-      [H.HsUnBangedTy (H.HsTyTuple [])]) []]
-
---}
 
 intf2type _ = []
 
@@ -437,8 +422,10 @@ intf2maker intf@(I.Interface (I.Id iid) _ _) =
         let defmaker = iid ++ "|mk" ++ renameMod tag
             flipv = mkVar "flip"
             crelv = mkVar "createElement"
-            tagv  = H.HsLit (H.HsString tag)
-            rhs   = H.HsUnGuardedRhs (H.HsApp flipv (H.HsApp crelv tagv))
+            exprv = mkVar "StringLit"
+            tags  = H.HsLit (H.HsString tag)
+            tagv  = H.HsApp (H.HsApp exprv tags) tags
+            rhs = H.HsUnGuardedRhs (H.HsApp crelv $ H.HsParen tagv)
             match = H.HsMatch nullLoc (H.HsIdent defmaker) [] rhs [] in
         H.HsFunBind [match]
       mktsig = 
@@ -697,9 +684,12 @@ mkTsig (p:ps) a = H.HsTyFun p (mkTsig ps a)
 
 mkTIdent = H.HsTyVar . H.HsIdent
 
--- A helper function to produce an export identifier
+-- A helper function to produce an export identifier.
+-- Datas (Txxx) export all their members.
 
-mkEIdent = H.HsEVar . H.UnQual . H.HsIdent
+mkEIdent name@(n:_) | n `elem` ['T'] = (H.HsEThingAll . H.UnQual . H.HsIdent) name
+                    | otherwise = (H.HsEVar . H.UnQual . H.HsIdent) name
+                    
 
 -- Obtain a return type signature from a return type
 

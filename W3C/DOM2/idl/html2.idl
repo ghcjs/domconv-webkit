@@ -580,7 +580,7 @@ module html2
     readonly attribute Document        contentDocument;
   };
 
-#include "../../addtags.idl"
+#include "addtags.idl"
 
 };
 
