@@ -280,7 +280,7 @@ mod2mod st md@(I.Module _ moddefs) =
     modlst = ["Control.Monad"
              ,"WebBits.JavaScript"
              ,"Language.JSMW.JSTypes"
-             ,"Language.JSMW.Monad"]
+             ,"Data.DOM.JSUtils"]
     modid' = renameMod $ getDef md
     imps = map mkModImport (map H.Module (modlst ++ imp st))
     intfs = filter intfOnly moddefs
@@ -480,7 +480,7 @@ intf2attr :: I.Defn -> [H.HsDecl]
 intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
   concat $ map mkattr $ collectAttrs intf where
     mkattr (I.Attribute [] _ _) = []
-    mkattr (I.Attribute [I.Id iat] False tat) = {-mksetter iid iat tat ++-} mkgetter iid iat tat
+    mkattr (I.Attribute [I.Id iat] False tat) = mksetter iid iat tat ++ mkgetter iid iat tat
     mkattr (I.Attribute [I.Id iat] True  tat) = mkgetter iid iat tat
     mkattr (I.Attribute (iatt:iats) b tat) = 
       mkattr (I.Attribute [iatt] b tat) ++ mkattr (I.Attribute iats b tat)
