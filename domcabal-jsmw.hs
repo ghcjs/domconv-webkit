@@ -13,7 +13,7 @@ import System.Directory
 import System.FilePath
 import System.Exit
 import System.Cmd
-import System.IO (stdin, stderr, readFile, openFile, IOMode (..))
+import System.IO (stdin, stderr, readFile, openFile, IOMode (..), hClose)
 import System.IO.UTF8
 import Control.Monad
 import Data.Maybe
@@ -30,6 +30,7 @@ main = do
   putStrLn $ "The package will be created in the current directory which has to be empty."
   d <- getDataDir
   let idldir = d </> "idl"
+      pkgdir = d </> "pkg"
   putStrLn $ "Looking for IDL files in " ++ idldir
   idlfiles <- getDirectoryContents idldir >>= return . filter (\f -> takeExtension f == ".idl")
   when (null idlfiles) $ do
@@ -46,6 +47,10 @@ main = do
     mapM_ (putStrLn . show) curfs
     putStrLn $ "The DOM Cabal package cannot be created: please clean up the directory " ++ curr
     exitWith (ExitFailure 2)
+  putStrLn "Copying extra files"
+  exfs_all <- getDirectoryContents pkgdir
+  let exfs = exfs_all \\ [".", ".."]
+  mapM_ (\f -> copyFile (pkgdir </> f) (curr </> f)) exfs
   putStrLn "Converting the IDL files."
   mapM_ (\f -> do
       let idl = idldir </> f
@@ -64,6 +69,17 @@ main = do
   mod_raw <- hGetContents out
   waitForProcess pid
   let modlist = map (drop 1 . snd . break (== '/')) (lines mod_raw)
-  mapM_ putStrLn modlist
+  putStrLn "Writing Cabal package description file."
+  let cabfile = "dom.cabal"
+  cfd <- openFile cabfile WriteMode
+  hPutStrLn cfd $ "-- " ++ cabfile ++ " is generated automatically: do not edit"
+  hPutStrLn cfd $ "Name: " ++ pkgName
+  hPutStrLn cfd $ "Build-Type: Simple"
+  hPutStrLn cfd $ "Version: " ++ "0.0"
+  hPutStrLn cfd $ "Build-depends: base, mtl, WebBits"
+  hPutStrLn cfd $ "Exposed-modules:\n" ++ concat (intersperse ",\n" (map ("  " ++) modlist))
+  hClose cfd
+  putStrLn "Package created successfully"
   exitWith (ExitSuccess)  
 
+pkgName = "DOM"
