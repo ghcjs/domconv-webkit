@@ -50,6 +50,7 @@ main = do
   putStrLn "Copying extra files"
   exfs_all <- getDirectoryContents pkgdir
   let exfs = exfs_all \\ [".", ".."]
+  mapM_ (putStrLn . show) exfs
   mapM_ (\f -> copyFile (pkgdir </> f) (curr </> f)) exfs
   putStrLn "Converting the IDL files."
   mapM_ (\f -> do
@@ -63,6 +64,10 @@ main = do
       ex <- system cmd
       putStrLn (show ex)
     ) (idlfiles \\ ["addtags.idl"])
+  let splcmd = "modsplit wbt.hs_unsplit"
+  putStrLn $ "Running command:" ++ splcmd
+  exs <- system splcmd
+  putStrLn (show exs)
   let grepcmd = "grep -- '^-- Split begin/' *.hs_unsplit"
   putStrLn $ "Running command: " ++ grepcmd
   (inp, out, err, pid) <- runInteractiveCommand grepcmd

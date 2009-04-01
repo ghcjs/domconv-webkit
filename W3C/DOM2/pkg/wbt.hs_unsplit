@@ -1,0 +1,66 @@
+-- Split begin/Data.DOM.WBTypes
+
+------------------------------------------------------------------
+-- |
+-- Module      :  Data.DOM.WBTypes
+-- Copyright   :  (c) Dmitry Golubovsky, 2009
+-- License     :  BSD-style
+-- 
+-- Maintainer  :  golubovsky@gmail.com
+-- Stability   :  experimental
+-- Portability :  portable
+-- 
+--
+--
+-- Minimal glue for WebBits and DOM
+------------------------------------------------------------------
+
+module Data.DOM.WBTypes (
+    castExpr
+   ,exprType
+   ,(/\)
+   ,setjsProperty
+  ) where
+
+import WebBits.JavaScript
+import qualified Data.Foldable as F
+import Control.Monad
+
+-- | Cast a WebBits Javascript expression to the given type. Type is represented
+-- by a value of the desired type (ofter "undefined").
+
+castExpr :: b -> Expression a -> Expression b
+
+castExpr b e = fmap (const b) e
+
+-- | Extract a type from an expression.
+
+exprType :: Expression a -> a
+
+exprType e =
+  let f y z = NullLit (undefined :: a)
+      (NullLit x) = F.foldr f undefined e
+  in  x
+
+-- | An infix version of "castExpr" provided for convenience.
+
+(/\) :: Expression a -> b -> Expression b
+
+(/\) = flip castExpr
+
+-- | A helper function to encode a property setter. This function is mostly called
+-- from converted IDL files for DOM interfaces.
+
+setjsProperty :: (Monad m) => String -> Expression a -> Expression this -> m (Expression this)
+
+setjsProperty pn pv this = do
+  let tht = exprType this
+      fun = FuncExpr tht [Id tht "x"] blk
+      thv = VarRef tht (Id tht "x")
+      blk = BlockStmt tht [setp, retx]
+      setp = ExprStmt tht $ AssignExpr tht OpAssign (DotRef tht thv (Id tht pn)) (pv /\ tht)
+      retx = ReturnStmt tht (Just thv)
+  return $ ParenExpr tht $ CallExpr tht fun [this]
+
+-- Split end
+

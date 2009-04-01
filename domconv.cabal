@@ -24,7 +24,7 @@ Build-Depends:  base > 3, filepath, mtl, utf8-env, utf8-string, haskell98, direc
                 process, array, containers, haskell-src, cpphs, WebBits
 
 Data-Dir:       W3C/DOM2
-Data-Files:     COPYRIGHT.html, idl/*.idl, pkg/Setup.hs
+Data-Files:     COPYRIGHT.html, idl/*.idl, pkg/Setup.hs, pkg/wbt.hs_unsplit
 
 -- Historical, CPS-style converter from ycr2js
 

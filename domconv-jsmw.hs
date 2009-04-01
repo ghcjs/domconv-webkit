@@ -279,8 +279,7 @@ mod2mod st md@(I.Module _ moddefs) =
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
     modlst = ["Control.Monad"
              ,"WebBits.JavaScript"
-             ,"Language.JSMW.JSTypes"
-             ,"Data.DOM.JSUtils"]
+             ,"Data.DOM.WBTypes"]
     modid' = renameMod $ getDef md
     imps = map mkModImport (map H.Module (modlst ++ imp st))
     intfs = filter intfOnly moddefs
@@ -490,7 +489,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     monadctx = (mkUIdent "Monad",[monadtv])
     simpl iid iat =
       let defset = iid ++ "|set'" ++ iat
-          unssetp = mkVar "setProperty"
+          unssetp = mkVar "setjsProperty"
           propnam = H.HsLit (H.HsString iat)
           rhs = H.HsUnGuardedRhs (H.HsApp unssetp propnam)
           match = H.HsMatch nullLoc (H.HsIdent defset) [] rhs [] in
@@ -699,6 +698,7 @@ tyRet (I.TyName c Nothing) = case (asIs c) of
   Nothing -> mkTIdent "zz"
   Just c' -> mkTIdent c'
 tyRet (I.TyInteger _) = mkTIdent "Double"
+tyRet (I.TyFloat _) = mkTIdent "Double"
 tyRet (I.TyApply _ (I.TyInteger _)) = mkTIdent "Double"
 tyRet  I.TyVoid  = H.HsTyTuple []
 tyRet t = error $ "Return type " ++ (show t)
@@ -724,6 +724,7 @@ tyParm (I.Param (I.Id p) ptype [I.Mode In]) =
       Just cc ->  (H.HsIdent cc, [])
       Nothing -> (hsidp, [(mkUIdent $ classFor c, [mkTIdent p])])
     I.TyInteger _ -> (H.HsIdent "Double",[])
+    I.TyFloat _ -> (H.HsIdent "Double",[])
     I.TyApply _ (I.TyInteger _) -> (H.HsIdent "Double",[])
     t -> error $ "Param type " ++ (show t)
 
