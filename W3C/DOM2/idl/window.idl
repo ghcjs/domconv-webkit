@@ -1,0 +1,75 @@
+// This file is an attempt to gather IDL definitions scattered across the Window Object
+// Technical Report: http://www.w3.org/TR/Window/
+
+// For licensing terms, see the LICENSE file in the toplevel directory of this Cabal package.
+
+#ifndef WINDOW_IDL
+#define WINDOW_IDL
+
+#include "dom.idl"
+#include "views.idl"
+
+module windowObj 
+{
+
+	interface Location;
+	interface TimerListener;
+
+	interface Window : AbstractView {
+
+		// self-references
+		readonly attribute Window window;
+		readonly attribute Window self;
+		readonly attribute Location location;
+		// embedding attributes
+		attribute DOMString name;
+		readonly attribute Window parent;
+		readonly attribute Window top;
+		readonly attribute Element frameElement;
+		// one-shot timer
+		long setTimeout(in TimerListener listener, in long milliseconds);
+		void clearTimeout(in long timerID);
+		// repeating timer
+		long setInterval(in TimerListener listener, in long milliseconds);
+		void clearInterval(in long timerID);
+
+	};
+
+	interface DocumentWindow  : DocumentView {
+
+		// same special JS assignment as window.location
+		readonly attribute Location location;
+
+	};
+
+	interface Location {
+		attribute DOMString href;
+
+		// pieces of the URI, per the generic URI syntax
+		attribute DOMString hash;
+		attribute DOMString host;
+		attribute DOMString hostname;
+		attribute DOMString pathname;
+		attribute DOMString port;
+		attribute DOMString protocol;
+		attribute DOMString search;
+
+		void assign(in DOMString url);
+		void replace(in DOMString url);
+		void reload();
+
+		DOMString toString();
+	};
+
+	interface EmbeddingElement {
+		readonly attribute Document contentDocument;
+		readonly attribute Window contentWindow;
+	};
+
+	interface TimerListener {
+		// what to put here?
+	};
+
+};
+
+#endif
