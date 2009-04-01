@@ -504,10 +504,9 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
                          (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet ityp))
           retts = H.HsQualType (monadctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
-    mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat tat]
+    mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat tat, gtcnc iid iat tat, eqcnc iid iat]
     gimpl iid iat tat = 
       let defget = iid ++ "|get'" ++ iat
-          unsgetp = mkVar "getProperty"
           parm = H.HsPVar $ H.HsIdent "thisp"
           propnam = H.HsLit (H.HsString iat)
           undef = H.HsExpTypeSig nullLoc (mkVar "undefined") (H.HsQualType [] (tyRet tat))
@@ -522,6 +521,22 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
                          (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet tat))
           retts = H.HsQualType (monadctx : thisctx : ctxRet tat) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
+    gtcnc iid iat tat =
+      let defcnc = iid ++ "|getm'" ++ iat
+          parms = [H.HsIdent "this"]
+          thisctx = (mkUIdent (classFor iid),[mkTIdent "this"])
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms)
+                         (H.HsTyApp monadtv $ H.HsTyApp exprtv (cnRet tat))
+          retts = H.HsQualType [monadctx, thisctx] tpsig in
+      H.HsTypeSig nullLoc [H.HsIdent defcnc] retts
+    eqcnc iid iat =
+      let defcnc = iid ++ "|getm'" ++ iat
+          defget = "get'" ++ iat
+          rhs = H.HsUnGuardedRhs (mkVar defget)
+          match = H.HsMatch nullLoc (H.HsIdent defcnc) [] rhs [] in
+      H.HsFunBind [match]
+
+          
 
 intf2attr _ = []
 
@@ -702,6 +717,15 @@ tyRet (I.TyFloat _) = mkTIdent "Double"
 tyRet (I.TyApply _ (I.TyInteger _)) = mkTIdent "Double"
 tyRet  I.TyVoid  = H.HsTyTuple []
 tyRet t = error $ "Return type " ++ (show t)
+
+-- The same, for a concrete type
+
+cnRet :: I.Type -> H.HsType
+
+cnRet (I.TyName c Nothing) = case asIs c of
+  Nothing -> mkTIdent ('T' : c)
+  Just c' -> mkTIdent c'
+cnRet z = tyRet z
 
 -- Obtain a return type context (if any) from a return type
 
