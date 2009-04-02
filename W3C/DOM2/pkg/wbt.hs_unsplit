@@ -64,3 +64,57 @@ setjsProperty pn pv this = do
 
 -- Split end
 
+-- Split begin/Data.DOM.Extra
+
+------------------------------------------------------------------
+-- |
+-- Module      :  Data.DOM.Extra
+-- Copyright   :  (c) Dmitry Golubovsky, 2009
+-- License     :  BSD-style
+-- 
+-- Maintainer  :  golubovsky@gmail.com
+-- Stability   :  experimental
+-- Portability :  portable
+-- 
+--
+--
+-- Address few shortcomings of W3C specifications, provide
+-- few useful functions.
+------------------------------------------------------------------
+
+module Data.DOM.Extra (
+  window
+ ,document
+ ,htmlDocument
+) where
+
+import Control.Monad
+import Data.DOM.WindowObj
+import Data.DOM.Window
+import Data.DOM.Dom
+import Data.DOM.Html2
+import WebBits.JavaScript
+
+-- | Access the global Window object.
+
+window :: (Monad m) => m (Expression TWindow)
+
+window = return $ VarRef TWindow (Id TWindow "window")
+
+-- | Access the current document. This indeed should be made through the
+-- Window interface, but current (incomplete) specification does not
+-- provide an easy way for that.
+
+document :: (Monad m) => m (Expression TDocument)
+
+document = return $ VarRef TDocument (Id TDocument "window.document")
+
+-- | Same as above, using the HTMLDocument interface.
+
+htmlDocument :: (Monad m) => m (Expression THTMLDocument)
+
+htmlDocument = return $ VarRef THTMLDocument (Id THTMLDocument "window.document")
+
+
+-- Split end
+
