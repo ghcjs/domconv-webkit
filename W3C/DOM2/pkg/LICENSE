@@ -1,5 +1,8 @@
-Copyright Dmitry Golubovsky 2008.
+Copyright Dmitry Golubovsky 2008, 2009.
 All rights reserved.
+
+For Haskell code derived from IDL files provided by the World Wide Web 
+Consortium, see also: http://www.w3.org/Consortium/Legal/copyright-documents-19990405
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are

@@ -6,7 +6,7 @@ available from the Web Consortium. See e. g.
 These constructors help generate WebBits representation of Javascript code that works with
 methods and attributes of DOM objects in typesafe manner using monadic notation of Haskell.
 .
-See documentation for the "Data.DOM" module for more information.
+See documentation for the "Data.DOM" module for more information and a brief usage example.
 .
 In the package version number, the version major reflects the level of DOM specification
 for which bindings are provided.

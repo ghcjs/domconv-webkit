@@ -76,6 +76,9 @@ main = do
   putStrLn $ "Reading package description file"
   let indent s ls = concat (intersperse (s ++ "\n") (map ("   " ++) ls))
   descr <- readFile "descr.txt"
+  putStrLn $ "Reading package version file"
+  let indent s ls = concat (intersperse (s ++ "\n") (map ("   " ++) ls))
+  ver <- readFile "version.txt"
   let modlist = map (drop 1 . snd . break (== '/')) (lines mod_raw)
   putStrLn "Writing Cabal package description file."
   let cabfile = "DOM.cabal"
@@ -83,7 +86,7 @@ main = do
   hPutStrLn cfd $ "-- " ++ cabfile ++ " is generated automatically: do not edit"
   hPutStrLn cfd $ "Name: DOM"
   hPutStrLn cfd $ "Build-Type: Simple"
-  hPutStrLn cfd $ "Version: " ++ "2.0.0"
+  hPutStrLn cfd $ "Version: " ++ head (lines ver)
   hPutStrLn cfd $ "Synopsis: " ++ head (lines descr)
   hPutStrLn cfd $ "Description:\n" ++ indent "" (tail $ lines descr)
   hPutStrLn cfd $ "License: BSD3"

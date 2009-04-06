@@ -85,7 +85,8 @@ setjsProperty pn pv this = do
 -- traditional @Hello World@. This example shows that even a simplest 
 -- "Control.Monad.Identity" will do. Of course, a more sofisticated Monad
 -- might provide more benefits, such as assigning some of expressions to
--- Javascript variables, automatic declaration of functions, etc.
+-- Javascript variables to share and prevent repeated evaluation, 
+-- automatic declaration of functions, etc.
 -- 
 -- @
 -- module Main where
