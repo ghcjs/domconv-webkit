@@ -20,11 +20,12 @@ Description:    This package provides executables that convert IDL files provide
  
 
 Build-Type:     Simple
-Build-Depends:  base > 3, filepath, mtl, utf8-env, utf8-string, haskell98, directory,
-                process, array, containers, haskell-src, cpphs, WebBits
+Build-Depends:  base >= 3, filepath, mtl, utf8-env, utf8-string, haskell98, directory,
+                process, array, containers, haskell-src, cpphs, WebBits >= 0.11.0
 
 Data-Dir:       W3C/DOM2
-Data-Files:     COPYRIGHT.html, idl/*.idl, pkg/Setup.hs, pkg/wbt.hs_unsplit
+Data-Files:     COPYRIGHT.html, idl/*.idl, pkg/Setup.hs, pkg/wbt.hs_unsplit,
+                pkg/LICENSE, pkg/descr.txt
 
 -- Historical, CPS-style converter from ycr2js
 

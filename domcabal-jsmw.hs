@@ -6,14 +6,14 @@
 module Main where
 
 import Paths_domconv
-import Prelude hiding (putStrLn)
+import Prelude hiding (putStrLn, readFile)
 import System.Environment.UTF8
 import System.Process
 import System.Directory
 import System.FilePath
 import System.Exit
 import System.Cmd
-import System.IO (stdin, stderr, readFile, openFile, IOMode (..), hClose)
+import System.IO (stdin, stderr, openFile, IOMode (..), hClose)
 import System.IO.UTF8
 import Control.Monad
 import Data.Maybe
@@ -73,18 +73,26 @@ main = do
   (inp, out, err, pid) <- runInteractiveCommand grepcmd
   mod_raw <- hGetContents out
   waitForProcess pid
+  putStrLn $ "Reading package description file"
+  let indent s ls = concat (intersperse (s ++ "\n") (map ("   " ++) ls))
+  descr <- readFile "descr.txt"
   let modlist = map (drop 1 . snd . break (== '/')) (lines mod_raw)
   putStrLn "Writing Cabal package description file."
-  let cabfile = "dom.cabal"
+  let cabfile = "DOM.cabal"
   cfd <- openFile cabfile WriteMode
   hPutStrLn cfd $ "-- " ++ cabfile ++ " is generated automatically: do not edit"
-  hPutStrLn cfd $ "Name: " ++ pkgName
+  hPutStrLn cfd $ "Name: DOM"
   hPutStrLn cfd $ "Build-Type: Simple"
-  hPutStrLn cfd $ "Version: " ++ "0.0"
-  hPutStrLn cfd $ "Build-depends: base, mtl, WebBits"
-  hPutStrLn cfd $ "Exposed-modules:\n" ++ concat (intersperse ",\n" (map ("  " ++) modlist))
+  hPutStrLn cfd $ "Version: " ++ "2.0.0"
+  hPutStrLn cfd $ "Synopsis: " ++ head (lines descr)
+  hPutStrLn cfd $ "Description:\n" ++ indent "" (tail $ lines descr)
+  hPutStrLn cfd $ "License: BSD3"
+  hPutStrLn cfd $ "License-File: LICENSE"
+  hPutStrLn cfd $ "Category: Web"
+  hPutStrLn cfd $ "Maintainer: Dmitry Golubovsky <golubovsky@gmail.com>"
+  hPutStrLn cfd $ "Build-depends: base >= 3, mtl >= 1.1.0.0, WebBits >= 0.11.0"
+  hPutStrLn cfd $ "Exposed-modules:\n" ++ indent "," modlist
   hClose cfd
   putStrLn "Package created successfully"
   exitWith (ExitSuccess)  
 
-pkgName = "DOM"
