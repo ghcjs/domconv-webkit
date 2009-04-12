@@ -10,3 +10,7 @@ See documentation for the "Data.DOM" module for more information and a brief usa
 .
 In the package version number, the version major reflects the level of DOM specification
 for which bindings are provided.
+.
+In the 2.0.0.1 version, the WebBits dependency version number has been corrected (== 0.11.0
+instead of >= 0.11.0) because WebBits has incompatible changes in upcoming versions. 
+No other changes were made.
