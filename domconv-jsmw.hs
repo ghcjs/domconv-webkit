@@ -17,7 +17,7 @@ import Data.List
 import Data.Char
 import Language.Haskell.Pretty
 import Language.Preprocessor.Cpphs
-import WebBits.JavaScript
+import BrownPLT.JavaScript
 import qualified Language.Haskell.Syntax as H
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -278,7 +278,7 @@ mod2mod :: DOMState -> I.Defn -> H.HsModule
 mod2mod st md@(I.Module _ moddefs) = 
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
     modlst = ["Control.Monad"
-             ,"WebBits.JavaScript"
+             ,"BrownPLT.JavaScript"
              ,"Data.DOM.WBTypes"]
     modid' = renameMod $ getDef md
     imps = map mkModImport (map H.Module (modlst ++ imp st))

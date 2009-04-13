@@ -12,7 +12,7 @@
 -- 
 --
 --
--- Minimal glue for WebBits and DOM
+-- Minimal glue for BrownPLT and DOM
 ------------------------------------------------------------------
 
 module Data.DOM.WBTypes (
@@ -22,11 +22,11 @@ module Data.DOM.WBTypes (
    ,setjsProperty
   ) where
 
-import WebBits.JavaScript
+import BrownPLT.JavaScript
 import qualified Data.Foldable as F
 import Control.Monad
 
--- | Cast a WebBits Javascript expression to the given type. Type is represented
+-- | Cast a BrownPLT Javascript expression to the given type. Type is represented
 -- by a value of the desired type (ofter "undefined").
 
 castExpr :: b -> Expression a -> Expression b
@@ -90,7 +90,7 @@ setjsProperty pn pv this = do
 -- 
 -- @
 -- module Main where
--- import "WebBits.JavaScript"
+-- import "BrownPLT.JavaScript"
 -- import "Control.Monad"
 -- import "Control.Monad.Identity"
 -- import "Data.DOM"
@@ -149,7 +149,7 @@ import Data.DOM.Css
 import Data.DOM.Node
 import Data.DOM.Document
 import Data.DOM.HTMLDocument
-import WebBits.JavaScript
+import BrownPLT.JavaScript
 
 -- | Access the global Window object.
 
