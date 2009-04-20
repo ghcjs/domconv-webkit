@@ -29,7 +29,7 @@ import Control.Monad
 -- | Cast a BrownPLT Javascript expression to the given type. Type is represented
 -- by a value of the desired type (ofter "undefined").
 
-castExpr :: b -> Expression a -> Expression b
+castExpr :: (Functor x) => b -> x a -> x b
 
 castExpr b e = fmap (const b) e
 
@@ -44,7 +44,7 @@ exprType e =
 
 -- | An infix version of "castExpr" provided for convenience.
 
-(/\) :: Expression a -> b -> Expression b
+(/\) :: (Functor x) => x a -> b -> x b
 
 (/\) = flip castExpr
 
@@ -91,13 +91,14 @@ setjsProperty pn pv this = do
 -- @
 -- module Main where
 -- import "BrownPLT.JavaScript"
+-- import "BrownPLT.JavaScript.PrettyPrint"
 -- import "Control.Monad"
 -- import "Control.Monad.Identity"
 -- import "Data.DOM"
 -- import "Data.DOM.Dom"
 -- import "Data.DOM.Node"
 -- import "Data.DOM.HTMLDocument"
--- main = 'putStrLn' '$' 'show' '$' pp '$' 
+-- main = 'putStrLn' '$' 'show' '$' 'stmt' '$' 
 --   'FunctionStmt' undefined ('Id' undefined \"main\") [] 
 --     ('ExprStmt' undefined '$' 'runIdentity' q)
 -- q = do
@@ -150,6 +151,10 @@ import Data.DOM.Node
 import Data.DOM.Document
 import Data.DOM.HTMLDocument
 import BrownPLT.JavaScript
+
+#ifdef __HADDOCK__
+import BrownPLT.JavaScript.PrettyPrint
+#endif
 
 -- | Access the global Window object.
 

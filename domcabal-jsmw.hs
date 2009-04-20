@@ -92,6 +92,7 @@ main = do
   hPutStrLn cfd $ "License: BSD3"
   hPutStrLn cfd $ "License-File: LICENSE"
   hPutStrLn cfd $ "Category: Web"
+  hPutStrLn cfd $ "Extensions: CPP"
   hPutStrLn cfd $ "Maintainer: Dmitry Golubovsky <golubovsky@gmail.com>"
   hPutStrLn cfd $ "Build-depends: base >= 3, mtl >= 1.1.0.0, WebBits == 0.15"
   hPutStrLn cfd $ "Exposed-modules:\n" ++ indent "," modlist
