@@ -138,6 +138,7 @@ module Data.DOM (
  ,bool
  ,true
  ,false
+ ,unit
 ) where
 
 import Control.Monad
@@ -259,6 +260,11 @@ false :: Expression Bool
 
 false = bool False
 
+-- | A null-expression of type ()
+
+unit :: Expression ()
+
+unit = NullLit ()
 
 -- Split end
 
