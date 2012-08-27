@@ -16,8 +16,8 @@ Description:    This package provides executables that convert IDL files provide
                 .
                 <http://www.haskell.org/haskellwiki/Haskell_in_web_browser#DOM_interfaces_vs._Haskell_type_classes>
                 .
-                The IDL parser based on parts of H/Direct code.               
- 
+                The IDL parser based on parts of H/Direct code.
+
 
 Build-Type:     Simple
 Build-Depends:  base >= 3, filepath, mtl, utf8-env, utf8-string, haskell98, directory,
@@ -44,7 +44,7 @@ Main-is:        domconv-jsmw.hs
 Hs-source-dirs: ., hdirect-0.21, jsmw
 Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
                 Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
-              
+
 Extensions:     ScopedTypeVariables
 
 -- Automatically build a Cabal package containing DOM definitions in JSMW flavor.

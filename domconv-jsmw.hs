@@ -41,7 +41,7 @@ main = do
 
 procopts opts = do
   let cppfiles = infiles opts
-      (hsrc, inclfile) = 
+      (hsrc, inclfile) =
         case cppfiles of
           [] -> (hGetContents stdin, "<stdin>")
           ["-"] -> (hGetContents stdin, "<stdin>")
@@ -141,11 +141,11 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
   methtsig _ = False
   corrn = drop 1 . dropWhile (/= '|')
   methcorrn (H.HsTypeSig x [H.HsIdent s] y) = H.HsTypeSig x [H.HsIdent (corrn s)] y
-  methcorrn (H.HsFunBind [H.HsMatch x (H.HsIdent s) y z t]) = 
+  methcorrn (H.HsFunBind [H.HsMatch x (H.HsIdent s) y z t]) =
     H.HsFunBind [H.HsMatch x (H.HsIdent (corrn s)) y z t]
   methcorrn z = z
-  methassoc meth = 
-    let i = ns ++ takeWhile (/= '|') (declname meth) 
+  methassoc meth =
+    let i = ns ++ takeWhile (/= '|') (declname meth)
         ns = case headns of
           "" -> ""
           mns -> mns ++ "."
@@ -157,8 +157,8 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
       Nothing -> M.insert i [meth] m
       (Just meths) -> M.insert i (meth : meths) m
   submods = M.elems $ M.mapWithKey mksubmod methmap
-  mksubmod iid smdecls = 
-    H.HsModule nullLoc (H.Module iid) (Just subexp) 
+  mksubmod iid smdecls =
+    H.HsModule nullLoc (H.Module iid) (Just subexp)
                (mkModImport modid : (imps ++ docimp)) smdecls where
       subexp = map mkEIdent $ nub $ filter (not . isSuffixOf "'") $ map declname smdecls
       docimp = case "createElement" `elem` (map declname smdecls) of
@@ -177,15 +177,15 @@ domLoop :: DOMState -> [I.Defn] -> DOMState
 domLoop st [] = st
 domLoop st (def : defs) = case def of
   I.Pragma prgm -> domLoop (prgm2State st (dropWhile isSpace prgm)) defs
-  I.Module id moddef -> 
+  I.Module id moddef ->
     let prmod = mod2mod st (I.Module id' moddef)
-        modn = ns st ++ (renameMod $ concat $ intersperse "." $ 
+        modn = ns st ++ (renameMod $ concat $ intersperse "." $
                            reverse $ parts ( == '.') (getDef def))
         id' = I.Id modn
         imp' = modn : imp st
         modl = prmod : (procmod st) in
     domLoop st {procmod = modl, imp = imp'} defs
-  z -> 
+  z ->
     let logmsg = "Expected a Module or a Pragma; found " ++ (show z) in
     domLoop st {convlog = convlog st ++ [logmsg]} defs
 
@@ -193,7 +193,7 @@ domLoop st (def : defs) = case def of
 
 prgm2State :: DOMState -> String -> DOMState
 
-prgm2State st ('n':'a':'m':'e':'s':'p':'a':'c':'e':nns) = 
+prgm2State st ('n':'a':'m':'e':'s':'p':'a':'c':'e':nns) =
   let nnsst = read (dropWhile isSpace nns)
       dot = if length nnsst == 0 then "" else "." in
   st {ns = nnsst ++ dot}
@@ -209,8 +209,8 @@ prgm2State st upgm =
 valParentMap :: M.Map String [Either String String] -> [String]
 
 valParentMap pm = concat (M.elems m2) where
-  m2 = M.mapWithKey lefts pm 
-  lefts intf parents = concat $ map (leftmsg intf) parents 
+  m2 = M.mapWithKey lefts pm
+  lefts intf parents = concat $ map (leftmsg intf) parents
   leftmsg intf (Right _) = []
   leftmsg intf (Left p) = ["Interface " ++ intf ++ " has " ++ p ++ " as a parent, but " ++
                            p ++ " is not defined anywhere"]
@@ -231,7 +231,7 @@ mkParentMap defns = m2 where
   parent pidf = case (pidf `M.member` m1) of
     True  -> (Right pidf) : snd (getparents (fromJust $ M.lookup pidf m1))
     False -> [Left pidf]
-  
+
 
 -- Fake source location
 
@@ -275,7 +275,7 @@ typeFor  s = "T" ++ s
 
 mod2mod :: DOMState -> I.Defn -> H.HsModule
 
-mod2mod st md@(I.Module _ moddefs) = 
+mod2mod st md@(I.Module _ moddefs) =
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
     modlst = ["Control.Monad"
              ,"BrownPLT.JavaScript"
@@ -334,7 +334,7 @@ intf2type _ = []
 
 intf2class :: I.Defn -> [H.HsDecl]
 
-intf2class intf@(I.Interface _ supers _) = 
+intf2class intf@(I.Interface _ supers _) =
   [H.HsClassDecl nullLoc sups (H.HsIdent (classFor $ getDef intf)) (take 1 azHIList) []] where
     sups = map name2ctxt supers
 
@@ -378,7 +378,7 @@ constOnly _ = False
 
 collectOps :: I.Defn -> [I.Defn]
 
-collectOps (I.Interface _ _ cldefs) = 
+collectOps (I.Interface _ _ cldefs) =
   filter opsOnly cldefs
 
 collectOps _ = []
@@ -387,7 +387,7 @@ collectOps _ = []
 
 collectConst :: I.Defn -> [I.Defn]
 
-collectConst (I.Interface _ _ cldefs) = 
+collectConst (I.Interface _ _ cldefs) =
   filter constOnly cldefs
 
 collectConst _ = []
@@ -405,7 +405,7 @@ collectAttrs _ = []
 
 mkInstDecl :: String -> String -> H.HsDecl
 
-mkInstDecl clname typename = 
+mkInstDecl clname typename =
   H.HsInstDecl nullLoc [] (mkUIdent $ classFor clname) [mkTIdent $ typeFor typename] []
 
 -- For certain interfaces (ancestors of HTMLElement), special maker functions
@@ -417,7 +417,7 @@ intf2maker intf@(I.Interface (I.Id iid) _ _) =
   case (tagFor iid) of
     "" -> []
     tag -> [mktsig, mkimpl] where
-      mkimpl = 
+      mkimpl =
         let defmaker = iid ++ "|mk" ++ renameMod tag
             flipv = mkVar "flip"
             crelv = mkVar "createElement"
@@ -427,14 +427,14 @@ intf2maker intf@(I.Interface (I.Id iid) _ _) =
             rhs = H.HsUnGuardedRhs (H.HsApp crelv $ H.HsParen tagv)
             match = H.HsMatch nullLoc (H.HsIdent defmaker) [] rhs [] in
         H.HsFunBind [match]
-      mktsig = 
+      mktsig =
         let monadtv = mkTIdent "mn"
             exprtv = mkTIdent "Expression"
             defmaker = iid ++ "|mk" ++ renameMod tag
             parms = [H.HsIdent "a"]
             actx = (mkUIdent (classFor "HTMLDocument"),[mkTIdent "a"])
             monadctx = (mkUIdent "Monad",[monadtv])
-            tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+            tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms)
                            (H.HsTyApp monadtv $ H.HsTyApp exprtv (mkTIdent (typeFor iid)))
             retts = H.HsQualType (monadctx : actx : []) tpsig in
         H.HsTypeSig nullLoc [H.HsIdent defmaker] retts
@@ -481,7 +481,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     mkattr (I.Attribute [] _ _) = []
     mkattr (I.Attribute [I.Id iat] False tat) = mksetter iid iat tat ++ mkgetter iid iat tat
     mkattr (I.Attribute [I.Id iat] True  tat) = mkgetter iid iat tat
-    mkattr (I.Attribute (iatt:iats) b tat) = 
+    mkattr (I.Attribute (iatt:iats) b tat) =
       mkattr (I.Attribute [iatt] b tat) ++ mkattr (I.Attribute iats b tat)
     mksetter iid iat tat = [stsig iid iat tat, simpl iid iat]
     monadtv = mkTIdent "mn"
@@ -500,12 +500,12 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           parm = [I.Param (I.Id "val") tat [I.Mode In]]
           parms = (map (fst . tyParm) parm) ++ [H.HsIdent "zz"]
           contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet ityp
-          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms)
                          (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet ityp))
           retts = H.HsQualType (monadctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat tat, gtcnc iid iat tat, eqcnc iid iat]
-    gimpl iid iat tat = 
+    gimpl iid iat tat =
       let defget = iid ++ "|get'" ++ iat
           parm = H.HsPVar $ H.HsIdent "thisp"
           propnam = H.HsLit (H.HsString iat)
@@ -513,11 +513,11 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           rhs = H.HsUnGuardedRhs $ mkGetter iat parm (tyRet tat)
           match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
       H.HsFunBind [match]
-    gtsig iid iat tat = 
+    gtsig iid iat tat =
       let defget = iid ++ "|get'" ++ iat
           parms = [H.HsIdent "this"]
           thisctx = (mkUIdent (classFor iid),[mkTIdent "this"])
-          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms)
                          (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet tat))
           retts = H.HsQualType (monadctx : thisctx : ctxRet tat) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
@@ -536,7 +536,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           match = H.HsMatch nullLoc (H.HsIdent defcnc) [] rhs [] in
       H.HsFunBind [match]
 
-          
+
 
 intf2attr _ = []
 
@@ -552,12 +552,12 @@ mkGetter :: String -> H.HsPat -> H.HsType -> H.HsExp
 mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
   let1 = H.HsLetStmt [
            H.HsFunBind [
-             H.HsMatch nullLoc 
-                       (H.HsIdent "et") 
-                       [] 
+             H.HsMatch nullLoc
+                       (H.HsIdent "et")
+                       []
                        (H.HsUnGuardedRhs $ H.HsExpTypeSig nullLoc
                                                           (mkVar "undefined")
-                                                          (H.HsQualType [] rett)) 
+                                                          (H.HsQualType [] rett))
                        []
             ]
           ]
@@ -568,21 +568,21 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
                        []
                        (H.HsUnGuardedRhs $ H.HsApp (
                                              H.HsApp (
-                                               H.HsApp (mkVar "DotRef") 
+                                               H.HsApp (mkVar "DotRef")
                                                        (mkVar "et"))
-                                               (H.HsParen $ 
+                                               (H.HsParen $
                                                   H.HsInfixApp (mkVar "thisp")
                                                                (H.HsQVarOp $ mkSymbol "/\\")
                                                                (mkVar "et")))
                                              (H.HsParen $
                                                 H.HsApp (
-                                                  H.HsApp (mkVar "Id") 
-                                                          (mkVar "et")) 
+                                                  H.HsApp (mkVar "Id")
+                                                          (mkVar "et"))
                                                   (H.HsLit $ H.HsString prop)))
                        []
              ]
            ]
-  ret = H.HsQualifier $ 
+  ret = H.HsQualifier $
           H.HsApp (mkVar "return") (mkVar "r")
 
 -- Methods are lifted to top level. Declared argument types are converted
@@ -594,7 +594,7 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
 intf2meth :: I.Defn -> [H.HsDecl]
 
 intf2meth intf@(I.Interface _ _ cldefs) =
-  (concat $ map mkmeth $ collectOps intf) ++ 
+  (concat $ map mkmeth $ collectOps intf) ++
   (concat $ map mkconst $ collectConst intf) where
     getDefHs op = getDef op
     getDefJs op@(I.Operation _ _ _ mbctx) = case mbctx of
@@ -607,7 +607,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
     mkmeth op = tsig op : timpl op
-    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _) = 
+    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _) =
       let monadtv = mkTIdent "mn"
           exprtv = mkTIdent "Expression"
           defop = getDef intf ++ "|" ++ getDefHs op
@@ -615,7 +615,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet optype
           monadctx = (mkUIdent "Monad",[monadtv])
           thisctx = (mkUIdent (classFor $ getDef intf),[mkTIdent "this"])
-          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms) 
+          tpsig = mkTsig (map (H.HsTyApp exprtv . H.HsTyVar) parms)
                          (H.HsTyApp monadtv $ H.HsTyApp exprtv (tyRet optype))
           retts = H.HsQualType (monadctx : thisctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
@@ -639,16 +639,16 @@ mkMethod :: String -> [H.HsPat] -> H.HsType -> H.HsExp
 
 mkMethod meth args rett = H.HsDo [let1, let2, ret] where
   args' = (reverse . tail . reverse) args
-  cast ts (H.HsPVar (H.HsIdent hn)) = 
+  cast ts (H.HsPVar (H.HsIdent hn)) =
     H.HsInfixApp (mkVar hn) (H.HsQVarOp $ mkSymbol "/\\") (mkVar ts)
   let1 = H.HsLetStmt [
            H.HsFunBind [
-             H.HsMatch nullLoc 
-                       (H.HsIdent "et") 
-                       [] 
+             H.HsMatch nullLoc
+                       (H.HsIdent "et")
+                       []
                        (H.HsUnGuardedRhs $ H.HsExpTypeSig nullLoc
                                                           (mkVar "undefined")
-                                                          (H.HsQualType [] rett)) 
+                                                          (H.HsQualType [] rett))
                        []
             ]
           ]
@@ -659,21 +659,21 @@ mkMethod meth args rett = H.HsDo [let1, let2, ret] where
                        []
                        (H.HsUnGuardedRhs $ H.HsApp (
                                              H.HsApp (
-                                               H.HsApp (mkVar "DotRef") 
+                                               H.HsApp (mkVar "DotRef")
                                                        (mkVar "et"))
-                                               (H.HsParen $ 
+                                               (H.HsParen $
                                                   H.HsInfixApp (mkVar "thisp")
                                                                (H.HsQVarOp $ mkSymbol "/\\")
                                                                (mkVar "et")))
                                              (H.HsParen $
                                                 H.HsApp (
-                                                  H.HsApp (mkVar "Id") 
-                                                          (mkVar "et")) 
+                                                  H.HsApp (mkVar "Id")
+                                                          (mkVar "et"))
                                                   (H.HsLit $ H.HsString meth)))
                        []
              ]
            ]
-  ret = H.HsQualifier $ 
+  ret = H.HsQualifier $
           H.HsApp (mkVar "return")
                   (H.HsParen $
                      H.HsApp (
@@ -703,7 +703,7 @@ mkTIdent = H.HsTyVar . H.HsIdent
 
 mkEIdent name@(n:_) | n `elem` ['T'] = (H.HsEThingAll . H.UnQual . H.HsIdent) name
                     | otherwise = (H.HsEVar . H.UnQual . H.HsIdent) name
-                    
+
 
 -- Obtain a return type signature from a return type
 
@@ -741,7 +741,7 @@ ctxRet _ = []
 
 tyParm :: I.Param -> (H.HsName, [H.HsAsst])
 
-tyParm (I.Param (I.Id p) ptype [I.Mode In]) = 
+tyParm (I.Param (I.Id p) ptype [I.Mode In]) =
   let hsidp = H.HsIdent p in
   case ptype of
     I.TyName c Nothing -> case asIs c of

@@ -56,9 +56,9 @@ main = do
   mapM_ (\f -> do
       let idl = idldir </> f
           base = takeFileName f `replaceExtension` ".hs_unsplit"
-          cmd = "domconv-jsmw -I" ++ idldir ++ 
-                  " <" ++ idl ++ 
-                  " >" ++ base ++ 
+          cmd = "domconv-jsmw -I" ++ idldir ++
+                  " <" ++ idl ++
+                  " >" ++ base ++
                   " && modsplit " ++ base
       putStrLn $ "Running command: " ++ cmd
       ex <- system cmd
@@ -98,5 +98,5 @@ main = do
   hPutStrLn cfd $ "Exposed-modules:\n" ++ indent "," modlist
   hClose cfd
   putStrLn "Package created successfully"
-  exitWith (ExitSuccess)  
+  exitWith (ExitSuccess)
 

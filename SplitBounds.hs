@@ -11,7 +11,7 @@ splitBegin  = "-- Split begin"
 splitEnd    = "-- Split end"
 
 -- A generic version of `words': breaks list by any predicate.
-    
+
 parts pred s = case dropWhile pred s of
                  [] -> []
                  s' -> w : parts pred s''

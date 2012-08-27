@@ -42,7 +42,7 @@ main = do
 
 procopts opts = do
   let cppfiles = infiles opts
-      (hsrc, inclfile) = 
+      (hsrc, inclfile) =
         case cppfiles of
           [] -> (hGetContents stdin, "<stdin>")
           ["-"] -> (hGetContents stdin, "<stdin>")
@@ -144,11 +144,11 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
   methtsig _ = False
   corrn = drop 1 . dropWhile (/= '|')
   methcorrn (H.HsTypeSig x [H.HsIdent s] y) = H.HsTypeSig x [H.HsIdent (corrn s)] y
-  methcorrn (H.HsFunBind [H.HsMatch x (H.HsIdent s) y z t]) = 
+  methcorrn (H.HsFunBind [H.HsMatch x (H.HsIdent s) y z t]) =
     H.HsFunBind [H.HsMatch x (H.HsIdent (corrn s)) y z t]
   methcorrn z = z
-  methassoc meth = 
-    let i = ns ++ takeWhile (/= '|') (declname meth) 
+  methassoc meth =
+    let i = ns ++ takeWhile (/= '|') (declname meth)
         ns = case headns of
           "" -> ""
           mns -> mns ++ "."
@@ -160,8 +160,8 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
       Nothing -> M.insert i [meth] m
       (Just meths) -> M.insert i (meth : meths) m
   submods = M.elems $ M.mapWithKey mksubmod methmap
-  mksubmod iid smdecls = 
-    H.HsModule nullLoc (H.Module iid) (Just subexp) 
+  mksubmod iid smdecls =
+    H.HsModule nullLoc (H.Module iid) (Just subexp)
                (mkModImport modid : (imps ++ docimp)) smdecls where
       subexp = map mkEIdent $ nub $ filter (not . isSuffixOf "'") $ map declname smdecls
       docimp = case "createElement" `elem` (map declname smdecls) of
@@ -180,15 +180,15 @@ domLoop :: DOMState -> [I.Defn] -> DOMState
 domLoop st [] = st
 domLoop st (def : defs) = case def of
   I.Pragma prgm -> domLoop (prgm2State st (dropWhile isSpace prgm)) defs
-  I.Module id moddef -> 
+  I.Module id moddef ->
     let prmod = mod2mod st (I.Module id' moddef)
-        modn = ns st ++ (renameMod $ concat $ intersperse "." $ 
+        modn = ns st ++ (renameMod $ concat $ intersperse "." $
                            reverse $ parts ( == '.') (getDef def ++ modpref st))
         id' = I.Id modn
         imp' = modn : imp st
         modl = prmod : (procmod st) in
     domLoop st {procmod = modl, imp = imp'} defs
-  z -> 
+  z ->
     let logmsg = "Expected a Module or a Pragma; found " ++ (show z) in
     domLoop st {convlog = convlog st ++ [logmsg]} defs
 
@@ -203,7 +203,7 @@ prgm2State st ('p':'r':'e':'f':'i':'x':pref) =
   st {modpref = dot ++ prefst}
 --}
 
-prgm2State st ('n':'a':'m':'e':'s':'p':'a':'c':'e':nns) = 
+prgm2State st ('n':'a':'m':'e':'s':'p':'a':'c':'e':nns) =
   let nnsst = read (dropWhile isSpace nns)
       dot = if length nnsst == 0 then "" else "." in
   st {ns = nnsst ++ dot}
@@ -219,8 +219,8 @@ prgm2State st upgm =
 valParentMap :: M.Map String [Either String String] -> [String]
 
 valParentMap pm = concat (M.elems m2) where
-  m2 = M.mapWithKey lefts pm 
-  lefts intf parents = concat $ map (leftmsg intf) parents 
+  m2 = M.mapWithKey lefts pm
+  lefts intf parents = concat $ map (leftmsg intf) parents
   leftmsg intf (Right _) = []
   leftmsg intf (Left p) = ["Interface " ++ intf ++ " has " ++ p ++ " as a parent, but " ++
                            p ++ " is not defined anywhere"]
@@ -241,7 +241,7 @@ mkParentMap defns = m2 where
   parent pidf = case (pidf `M.member` m1) of
     True  -> (Right pidf) : snd (getparents (fromJust $ M.lookup pidf m1))
     False -> [Left pidf]
-  
+
 
 -- Fake source location
 
@@ -286,7 +286,7 @@ typeFor  s = "T" ++ s
 
 mod2mod :: DOMState -> I.Defn -> H.HsModule
 
-mod2mod st md@(I.Module _ moddefs) = 
+mod2mod st md@(I.Module _ moddefs) =
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
     modid' = renameMod $ getDef md
     imps = map mkModImport (map H.Module (["CPS" ,"UnsafeJS"] ++ imp st))
@@ -330,14 +330,14 @@ intf2inst _ _ = []
 
 intf2const :: I.Defn -> [H.HsDecl]
 
-intf2const intf@(I.Interface _ _ defs) = 
+intf2const intf@(I.Interface _ _ defs) =
   map oneconst (filter constOnly defs)
 
 -- Produce a Haskell nullary function declaration out of a constant
 
 oneconst :: I.Defn -> H.HsDecl
 
-oneconst cnst@(I.Constant (I.Id cid) _ ctyp (I.Lit (IntegerLit clit))) = 
+oneconst cnst@(I.Constant (I.Id cid) _ ctyp (I.Lit (IntegerLit clit))) =
   let match = H.HsMatch nullLoc (H.HsIdent cid) []
                         (H.HsUnGuardedRhs (H.HsLit (H.HsString (show clit)))) []
   in H.HsFunBind [match]
@@ -357,7 +357,7 @@ intf2type _ = []
 
 intf2class :: I.Defn -> [H.HsDecl]
 
-intf2class intf@(I.Interface _ supers _) = 
+intf2class intf@(I.Interface _ supers _) =
   [H.HsClassDecl nullLoc sups (H.HsIdent (classFor $ getDef intf)) (take 1 azHIList) []] where
     sups = map name2ctxt supers
 
@@ -399,7 +399,7 @@ constOnly _ = False
 
 collectOps :: I.Defn -> [I.Defn]
 
-collectOps (I.Interface _ _ cldefs) = 
+collectOps (I.Interface _ _ cldefs) =
   filter opsOnly cldefs
 
 collectOps _ = []
@@ -409,7 +409,7 @@ collectOps _ = []
 
 collectConst :: I.Defn -> [I.Defn]
 
-collectConst (I.Interface _ _ cldefs) = 
+collectConst (I.Interface _ _ cldefs) =
   filter constOnly cldefs
 
 collectConst _ = []
@@ -428,7 +428,7 @@ collectAttrs _ = []
 
 mkInstDecl :: String -> String -> H.HsDecl
 
-mkInstDecl clname typename = 
+mkInstDecl clname typename =
   H.HsInstDecl nullLoc [] (mkUIdent $ classFor clname) [mkTIdent $ typeFor typename] []
 
 -- For certain interfaces (ancestors of HTMLElement), special maker functions
@@ -440,7 +440,7 @@ intf2maker intf@(I.Interface (I.Id iid) _ _) =
   case (tagFor iid) of
     "" -> []
     tag -> [mktsig, mkimpl] where
-      mkimpl = 
+      mkimpl =
         let defmaker = iid ++ "|mk" ++ renameMod tag
             flipv = H.HsVar (mkUIdent "flip")
             crelv = H.HsVar (mkUIdent "createElement")
@@ -448,7 +448,7 @@ intf2maker intf@(I.Interface (I.Id iid) _ _) =
             rhs   = H.HsUnGuardedRhs (H.HsApp flipv (H.HsApp crelv tagv))
             match = H.HsMatch nullLoc (H.HsIdent defmaker) [] rhs [] in
         H.HsFunBind [match]
-      mktsig = 
+      mktsig =
         let cpstv = mkTIdent "CPS c"
             defmaker = iid ++ "|mk" ++ renameMod tag
             parms = [H.HsIdent "a"]
@@ -501,7 +501,7 @@ tagFor "HTMLImageElement" = "img"
 tagFor "HTMLTableSectionElement" = ""
 tagFor "HTMLAnchorElement" = "a"
 
-tagFor ('H':'T':'M':'L':s) = 
+tagFor ('H':'T':'M':'L':s) =
   let suff = "Element"
   in if isSuffixOf suff s
         then map toLower (take (length s - length suff) s)
@@ -520,7 +520,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     mkattr (I.Attribute [] _ _) = []
     mkattr (I.Attribute [I.Id iat] False tat) = mksetter iid iat tat ++ mkgetter iid iat tat
     mkattr (I.Attribute [I.Id iat] True  tat) = mkgetter iid iat tat
-    mkattr (I.Attribute (iatt:iats) b tat) = 
+    mkattr (I.Attribute (iatt:iats) b tat) =
       mkattr (I.Attribute [iatt] b tat) ++ mkattr (I.Attribute iats b tat)
     mksetter iid iat tat = [stsig iid iat tat, simpl iid iat]
     simpl iid iat =
@@ -541,14 +541,14 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter iid iat tat = [gtsig iid iat tat, gimpl iid iat]
-    gimpl iid iat = 
+    gimpl iid iat =
       let defget = iid ++ "|get'" ++ iat
           unsgetp = H.HsVar (mkUIdent "unsafeGetProperty")
           propnam = H.HsLit (H.HsString iat)
           rhs = H.HsUnGuardedRhs (H.HsApp unsgetp propnam)
           match = H.HsMatch nullLoc (H.HsIdent defget) [] rhs [] in
       H.HsFunBind [match]
-    gtsig iid iat tat = 
+    gtsig iid iat tat =
       let cpstv = mkTIdent "CPS c"
           defget = iid ++ "|get'" ++ iat
           parms = [H.HsIdent "this"]
@@ -569,7 +569,7 @@ intf2attr _ = []
 intf2meth :: I.Defn -> [H.HsDecl]
 
 intf2meth intf@(I.Interface _ _ cldefs) =
-  (concat $ map mkmeth $ collectOps intf) ++ 
+  (concat $ map mkmeth $ collectOps intf) ++
   (concat $ map mkconst $ collectConst intf) where
     getDefHs op = getDef op
     getDefJs op@(I.Operation _ _ _ mbctx) = case mbctx of
@@ -582,7 +582,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
     mkmeth op = tsig op : timpl op
-    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _) = 
+    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _) =
       let cpstv = mkTIdent "CPS c"
           defop = getDef intf ++ "|" ++ getDefHs op
           parms = (H.HsIdent "this") : (map (fst . tyParm) parm)
@@ -596,7 +596,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           defop' = defop ++ "'"
           tocpsev = H.HsVar (mkUIdent "toCPE")
           parms = map H.HsPVar (take (1 + length parm) azHIList)
-          parmv = map (H.HsVar . H.UnQual) 
+          parmv = map (H.HsVar . H.UnQual)
                       (H.HsIdent (getDefHs op ++ "'") : take (1 + length parm) azHIList)
           mkApp [] = error "Application with empty list"
           mkApp [a] = a
@@ -617,7 +617,7 @@ mkMethBody :: String -> [String] -> Jexp
 
 mkMethBody _ [] = error $ "A method should have at least one argument"
 
-mkMethBody meth args = 
+mkMethBody meth args =
   let (this:rgs) = map (\p -> JCall (JStr "exprEval") [JStr p]) args
       body = JMethod meth this rgs in
   JCall (JStr "return") [body]
@@ -665,7 +665,7 @@ ctxRet _ = []
 
 tyParm :: I.Param -> (H.HsName, [H.HsAsst])
 
-tyParm (I.Param (I.Id p) ptype [I.Mode In]) = 
+tyParm (I.Param (I.Id p) ptype [I.Mode In]) =
   let hsidp = H.HsIdent p in
   case ptype of
     I.TyName c Nothing -> case asIs c of
