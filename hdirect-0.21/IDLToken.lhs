@@ -65,6 +65,7 @@ data IDLToken
  | T_not
  | T_typedef
  | T_extern
+ | T_static
  | T_comma
  | T_dot
  | T_dotdotdot
@@ -98,6 +99,8 @@ data IDLToken
  | T_mode ParamDir
  | T_raises
  | T_context
+ | T_getter
+ | T_setter
  | T_fixed
  | T_idl_type	Type
  | T_type       String
@@ -115,7 +118,6 @@ data IDLToken
  | T_minus
  | T_safearray
  | T_sequence
- | T_string
  | T_wstring
  | T_readonly
  | T_attribute
@@ -263,9 +265,11 @@ omg_idl_keywords =
   , ("octet",      T_octet)
   , ("oneway",     T_oneway)
   , ("raises",     T_raises)
+  , ("getter",     T_getter)
+  , ("setter",     T_setter)
   , ("readonly",   T_readonly)
   , ("sequence",   T_sequence)
-  , ("string",     T_string)
+  , ("static",     T_static)
   ]
 
 \end{code}

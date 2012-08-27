@@ -1,0 +1,66 @@
+Name:           domconv-webkit
+Version:        0.1
+Author:         Dmitry Golubovsky, Hamish Mackenzie
+Maintainer:     Hamish Mackenzie <Hamish.Mackenzie@gmail.com>
+License:        BSD3
+License-File:   LICENSE
+Stability:      Experimental
+Category:       Utils
+
+Synopsis:       Converters of WebKit IDL files to Gtk2Hs Haskell bindins for webkitgtk.
+Description:    This package provides executables that WebKit IDL files to Haskell,
+                files that call the webkitgtk API to manipulate the DOM.
+                .
+                More on DOM interfaces vs. Haskell type classes here:
+                .
+                <http://www.haskell.org/haskellwiki/Haskell_in_web_browser#DOM_interfaces_vs._Haskell_type_classes>
+                .
+                The IDL parser based on parts of H/Direct code.
+
+
+Build-Type:     Simple
+Build-Depends:  base >= 4, filepath, mtl, utf8-string, directory,
+                process, array, containers, haskell-src, cpphs, WebBits == 2.2
+
+Data-Dir:       W3C/DOM2
+Data-Files:     COPYRIGHT.html, idl/*.idl, pkg/Setup.hs, pkg/wbt.hs_unsplit,
+                pkg/LICENSE, pkg/descr.txt, pkg/version.txt
+
+-- There is a good chance domconv-cps, domconv-jsmw and domcabal-jsmw
+-- are broken by the changes made to hdirect for the webkit gtk2hs binding
+
+-- -- Historical, CPS-style converter from ycr2js
+--
+-- Executable:     domconv-cps
+-- Main-is:        domconv-cps.hs
+-- Hs-source-dirs: ., hdirect-0.21, legacy-js
+-- Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
+--                 Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils,
+--                 Prim, JS.Jcode, JS.Show
+-- Extensions:     ScopedTypeVariables
+--
+-- -- Monadic converter for Javascript Monadic Writer
+--
+-- Executable:     domconv-jsmw
+-- Main-is:        domconv-jsmw.hs
+-- Hs-source-dirs: ., hdirect-0.21, jsmw
+-- Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
+--                 Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+--
+-- Extensions:     ScopedTypeVariables
+--
+-- -- Automatically build a Cabal package containing DOM definitions in JSMW flavor.
+--
+-- Executable:     domcabal-jsmw
+-- Main-is:        domcabal-jsmw.hs
+
+-- Converter for gtk2hs Haskell bindings to webkitgtk
+
+Executable:     domconv-webkit
+Main-is:        domconv-webkit.hs
+Hs-source-dirs: ., hdirect-0.21, jsmw
+Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+
+Extensions:     ScopedTypeVariables
+

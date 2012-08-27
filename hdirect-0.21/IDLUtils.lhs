@@ -32,7 +32,7 @@ getDef d =
    Typedef _ _ (i:_)        -> iName i
    Attributed _ d1          -> getDef d1
    ExternDecl _ [i]         -> iName i
-   Operation i _ _ _        -> iName i
+   Operation i _ _ _ _      -> iName i
    Interface (Id i) _ _     -> i
    Module (Id i) _          -> i
    DispInterface (Id i) _ _ -> i
@@ -42,10 +42,10 @@ getDef d =
    _                        -> ""
 
 getUses :: Defn -> [String]
-getUses d = 
-  case d of 
+getUses d =
+  case d of
     Typedef ty _ _        -> getTyUses ty
-    Constant _ _ ty _     -> getTyUses ty  -- expressions will never, 
+    Constant _ _ ty _     -> getTyUses ty  -- expressions will never,
                                            -- ever have free variables (in fact, const is a foreign co
                                            -- to typelibs.)
     Interface _ is ds     -> is ++ concatMap getUses ds
@@ -56,7 +56,7 @@ getUses d =
     Attributed _ d1       -> getUses d1
     TypeDecl t            -> getTyUses t
     ExternDecl t _        -> getTyUses t
-    Operation (FunId _ _ ps) r _ _ -> getTyUses r ++ concatMap (\ (Param _ t _) -> getTyUses t) ps
+    Operation (FunId _ _ ps) r _ _ _ -> getTyUses r ++ concatMap (\ (Param _ t _) -> getTyUses t) ps
     _                     -> []
 
 -- Since the types were constructed from type libraries, we can make

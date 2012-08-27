@@ -51,7 +51,7 @@ procopts opts = do
       optsb = opts {defines = ((defines opts) ++ baseopt)
                    ,boolopts = ((boolopts opts) {pragma = True}) }
   hsrc' <- hsrc
-  let hsrcpr = runCpphs optsb inclfile hsrc'
+  hsrcpr <- runCpphs optsb inclfile hsrc'
   x <- runLexM [] inclfile hsrcpr OmgParser.parseIDL
   let showMod (I.Module i d) = do
         putStrLn $ "module" ++ show i
@@ -374,13 +374,13 @@ mkUIdent = H.UnQual . H.HsIdent
 -- A filter to select only operations (methods)
 
 opsOnly :: I.Defn -> Bool
-opsOnly (I.Operation _ _ _ _) = True
+opsOnly (I.Operation _ _ _ _ _) = True
 opsOnly _ = False
 
 -- A filter to select only attributes
 
 attrOnly :: I.Defn -> Bool
-attrOnly (I.Attribute _ _ _) = True
+attrOnly (I.Attribute _ _ _ _ _) = True
 attrOnly _ = False
 
 -- A filter to select only interfaces (classes)
@@ -517,11 +517,11 @@ intf2attr :: I.Defn -> [H.HsDecl]
 
 intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
   concat $ map mkattr $ collectAttrs intf where
-    mkattr (I.Attribute [] _ _) = []
-    mkattr (I.Attribute [I.Id iat] False tat) = mksetter iid iat tat ++ mkgetter iid iat tat
-    mkattr (I.Attribute [I.Id iat] True  tat) = mkgetter iid iat tat
-    mkattr (I.Attribute (iatt:iats) b tat) =
-      mkattr (I.Attribute [iatt] b tat) ++ mkattr (I.Attribute iats b tat)
+    mkattr (I.Attribute [] _ _ _ _) = []
+    mkattr (I.Attribute [I.Id iat] False tat _ _) = mksetter iid iat tat ++ mkgetter iid iat tat
+    mkattr (I.Attribute [I.Id iat] True  tat _ _) = mkgetter iid iat tat
+    mkattr (I.Attribute (iatt:iats) b tat raises ext) =
+      mkattr (I.Attribute [iatt] b tat raises ext) ++ mkattr (I.Attribute iats b tat raises ext)
     mksetter iid iat tat = [stsig iid iat tat, simpl iid iat]
     simpl iid iat =
       let defset = iid ++ "|set'" ++ iat
@@ -572,7 +572,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
   (concat $ map mkmeth $ collectOps intf) ++
   (concat $ map mkconst $ collectConst intf) where
     getDefHs op = getDef op
-    getDefJs op@(I.Operation _ _ _ mbctx) = case mbctx of
+    getDefJs op@(I.Operation _ _ _ mbctx _) = case mbctx of
       Nothing -> getDef op
       Just [] -> getDef op
       Just (s:_) -> s
@@ -582,7 +582,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
     mkmeth op = tsig op : timpl op
-    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _) =
+    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
       let cpstv = mkTIdent "CPS c"
           defop = getDef intf ++ "|" ++ getDefHs op
           parms = (H.HsIdent "this") : (map (fst . tyParm) parm)
@@ -591,7 +591,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           tpsig = mkTsig parms (H.HsTyApp cpstv (tyRet optype))
           retts = H.HsQualType (thisctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
-    timpl op@(I.Operation (I.FunId _ _ parm) optype _ _) =
+    timpl op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
       let defop = getDef intf ++ "|" ++ getDefHs op
           defop' = defop ++ "'"
           tocpsev = H.HsVar (mkUIdent "toCPE")

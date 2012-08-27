@@ -14,15 +14,16 @@ module PreProc
 	, removeTmp
         ) where
 
-import CPUTime
-import System  ( getEnv, system )
+import System.Environment  ( getEnv )
+import System.Process (system)
 import Opts    ( optDebug, optCpp, optinclude_cppdirs, optcpp_defines )
-import List    ( intersperse )
+import Data.List    ( intersperse )
 import Utils   ( prefixDir )
-import IO
+import System.IO
 import Data.IORef
-import Foreign
-import Monad
+import Control.Monad
+import System.CPUTime (getCPUTime)
+import System.IO.Unsafe (unsafePerformIO)
 
 count :: IORef Int
 count = unsafePerformIO (newIORef 0)

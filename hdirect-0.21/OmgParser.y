@@ -86,17 +86,19 @@ END_GHC_ONLY
 	'+'	      { T_plus }
 	'*'	      { T_times }
 	'-'	      { T_minus }
-	STRING        { T_string }
 	WSTRING       { T_wstring }
 	SEQUENCE      { T_sequence  }
 	OBJECT        { T_object }
 	ANY           { T_any }
         OCTET         { T_octet }
 	ONEWAY	      { T_oneway }
+	STATIC	      { T_static }
 	FIXED	      { T_fixed }
 	EXCEPTION     { T_exception }
 	RAISES        { T_raises }
 	CONTEXT       { T_context }
+	GETTER        { T_getter }
+	SETTER        { T_setter }
 	READONLY      { T_readonly }
         INCLUDE_START { T_include_start $$ }
 	INCLUDE_END   { T_include_end }
@@ -112,27 +114,31 @@ definitions  :: { [Defn] }
    | definitions definition  { $2 : $1 }
 
 definition   :: { Defn }
-   : type_decl   ';'	    { $1 }
-   | const_decl  ';'        { $1 }
-   | except_decl ';'        { $1 }
-   | interface   ';'        { $1 }
-   | module      ';'        { $1 }
+   : type_decl opt_semiColon { $1 }
+   | const_decl opt_semiColon { $1 }
+   | except_decl opt_semiColon { $1 }
+   | interface opt_semiColon { $1 }
+   | module opt_semiColon   { $1 }
    | PRAGMA                 { Pragma $1 }
    | INCLUDE_START          { IncludeStart $1 }
    | INCLUDE_END            { IncludeEnd }
 
+opt_semiColon :: { Bool }
+   : ';' { True }
+   | {-empty-} { False }
+    
 module :: { Defn }
    : MODULE identifier '{' definitions '}'  { Module $2 (reverse $4) }
 
 interface :: { Defn }
    : interface_decl	    { $1 }
-   | INTERFACE identifier   { Forward $2 }
+   | INTERFACE opt_extended_attributes identifier   { Forward $3 }
 
 interface_decl :: { Defn }
    : interface_header '{' exports '}'  { let (ids,inherit) = $1 in Interface ids inherit (reverse $3) }
 
 interface_header :: { (Id, Inherit) }
-   : INTERFACE identifier opt_inheritance_spec { ($2,$3) }
+   : INTERFACE opt_extended_attributes identifier opt_inheritance_spec { ($3,$4) }
 
 exports :: { [Defn] }
    : {-empty-}			{    []   }
@@ -164,7 +170,7 @@ more_scoped_names :: { Inherit }
 {- constant declarations -}
 
 const_decl :: { Defn }
-   : CONST const_type identifier '=' const_expr  { Constant $3 [] $2 $5 }
+   : CONST opt_extended_attributes const_type identifier '=' const_expr  { Constant $4 [] $3 $6 }
 
 const_type :: { Type }
    : integer_type		{ $1 }
@@ -172,7 +178,6 @@ const_type :: { Type }
    | wide_char_type		{ $1 }
    | boolean_type		{ $1 }
    | floating_pt_type		{ $1 }
-   | string_type		{ $1 }
    | wide_string_type		{ $1 }
    | fixed_pt_const_type	{ $1 }
    | scoped_name		{ TyName $1 Nothing }
@@ -240,6 +245,7 @@ type_declarator :: { (Type, [Id]) }
 type_spec :: { Type }
    : simple_type_spec			{ $1 }
    | constr_type_spec			{ $1 }
+   | type_spec '[' ']'			{ TySafeArray $1 }
    
 
 simple_type_spec :: { Type }
@@ -259,7 +265,6 @@ base_type_spec :: { Type }
 
 template_type_spec :: { Type }
    : sequence_type			{ $1 }
-   | string_type			{ $1 }
    | wide_string_type			{ $1 }
    | fixed_pt_type			{ $1 }
 
@@ -275,6 +280,22 @@ declarators :: { [Id] }
 simple_declarator ::  { Id }
    : identifier				{ $1 }
 
+extended_attribute ::  { ExtAttribute }
+   : identifier                         { ExtAttr $1 }
+   | identifier '=' identifier          { ExtAttr $1 }
+   | identifier '=' DEFAULT             { ExtAttr $1 }
+   | identifier '=' const_type          { ExtAttr $1 }
+   | identifier '=' const_expr          { ExtAttr $1 }
+   | identifier '=' literal             { ExtAttr $1 }
+   | identifier '=' identifier parameter_decls { ExtAttr $1 }
+   | identifier parameter_decls { ExtAttr $1 }
+
+extended_attributes :: { [ExtAttribute] }
+   : extended_attribute                         { [$1] }
+   | extended_attributes ',' extended_attribute { $3 : $1 }
+   | extended_attributes ','                    { $1 }
+   | {-empty-} { [] }
+
 declarator :: { Id }
    : identifier				{ $1 }
    | identifier fixed_array_sizes	{ ArrayId $1 $2 }
@@ -284,8 +305,11 @@ floating_pt_type :: { Type }
 
 integer_type :: { Type }
    : INTEGER			{ TyInteger $1 }
+   | INTEGER INTEGER		{ TyInteger LongLong }
    | SIGNED INTEGER		{ TyApply (TySigned True)  (TyInteger $2) }
+   | SIGNED INTEGER INTEGER	{ TyApply (TySigned True)  (TyInteger LongLong) }
    | UNSIGNED INTEGER		{ TyApply (TySigned False) (TyInteger $2) }
+   | UNSIGNED INTEGER INTEGER	{ TyApply (TySigned False) (TyInteger LongLong) }
 
 char_type :: { Type }
    : CHAR	{ TyChar }
@@ -356,10 +380,6 @@ sequence_type :: { Type }
    : SEQUENCE '<' simple_type_spec ',' positive_int_const '>' { TySequence $3 (Just $5) }
    | SEQUENCE '<' simple_type_spec '>' { TySequence $3 Nothing }
 
-string_type   :: { Type }
-   : STRING '<' positive_int_const '>'	{ TyString (Just $3) }
-   | STRING				{ TyString Nothing   }
-
 wide_string_type   :: { Type }
    : WSTRING '<' positive_int_const '>'	{ TyWString (Just $3) }
    | WSTRING				{ TyWString Nothing   }
@@ -375,10 +395,14 @@ fixed_array_size  :: { Expr }
    : '[' positive_int_const ']'		{ $2 }
 
 attr_decl   :: { Defn }
-   : opt_readonly ATTRIBUTE param_type_spec simple_declarators { Attribute (reverse $4) $1 $3 }
+   : opt_readonly ATTRIBUTE opt_extended_attributes param_type_spec simple_declarators raises_exprs { Attribute (reverse $5) $1 $4 $6 $3 }
 
 opt_readonly :: { Bool }
    : READONLY   { True } | {-empty-} { False }
+
+opt_extended_attributes :: { [ExtAttribute] }
+   : '[' extended_attributes ']' { $2 }
+   | {-empty-} { [] }
 
 simple_declarators :: { [Id] }
    : simple_declarator		{ [$1] }
@@ -396,12 +420,13 @@ members :: { [Member] }
    | members member		{ $2:$1 }
 
 op_decl :: { Defn }
-   : opt_op_attribute op_type_spec identifier parameter_decls mb_raises_expr mb_context_expr
-		{ Operation (FunId $3 Nothing $4) $2 $5 $6 }
+   : opt_op_attribute opt_extended_attributes op_type_spec identifier parameter_decls raises_exprs mb_context_expr
+		{ Operation (FunId $4 Nothing $5) $3 $6 $7 $2 }
 
 opt_op_attribute :: { Bool }
    : {-nothing-}			{ False }
    | ONEWAY				{ True  }
+   | STATIC				{ False  }
 
 op_type_spec :: { Type }
    : param_type_spec			{ $1 }
@@ -416,14 +441,20 @@ param_decls :: { [Param] }
    | param_decls ',' param_decl		{ $3:$1 }
 
 param_decl :: { Param }
-   : param_attribute param_type_spec simple_declarator { Param $3 $2 [$1] }
+   : param_attribute opt_extended_attributes param_type_spec simple_declarator { Param $4 $3 [$1] }
 
 param_attribute :: { Attribute }
    : MODE	{ Mode $1 }
 
-mb_raises_expr :: { Maybe Raises }
-   : {-nothing-}		{ Nothing }
-   | RAISES '(' scoped_name_list ')' { Just (reverse $3) }
+raises_expr :: { Raises }
+   : RAISES '(' scoped_name_list ')' { Raises (reverse $3) }
+   | GETTER RAISES '(' scoped_name_list ')' { GetRaises (reverse $4) }
+   | SETTER RAISES '(' scoped_name_list ')' { SetRaises (reverse $4) }
+
+raises_exprs :: { [Raises] }
+   : raises_expr { [$1] }
+   | raises_exprs ',' raises_expr     { $3:$1 }
+   | {-nothing-}		{ [] }
 
 mb_context_expr :: { Maybe Context }
    : {-nothing-}		     { Nothing }
@@ -439,10 +470,10 @@ string_lit_list  :: { [String] }
 
 param_type_spec :: { Type }
    : base_type_spec		{ $1 }
-   | string_type		{ $1 }
    | wide_string_type		{ $1 }
    | fixed_pt_type		{ $1 }
    | scoped_name		{ TyName $1 Nothing }
+   | param_type_spec '[' ']'	{ TySafeArray $1 }
 
 fixed_pt_type	:: { Type }
    : FIXED '<' positive_int_const ',' integer_literal '>' { TyFixed (Just ($3,$5)) }

@@ -47,19 +47,23 @@ module Utils
        , mapAccumLM
        
        , notNull		-- :: [a] -> Bool
-       
+
+       , toUnderscoreCamel
+       , toLowerInitCamel
+       , toUpperHead
+       , spanCamel
        ) where
 
-import Char (chr, ord, readLitChar)
+import Data.Char
+       (toUpper, toLower, isUpper, isLower, chr, ord, readLitChar)
 -- import IOExts
 import Debug.Trace
-import IO
-import Int
 {- BEGIN_GHC_ONLY
 import Directory
    END_GHC_ONLY -}
-import Monad ( when )
-import List  ( mapAccumL, isPrefixOf )
+import Control.Monad ( when )
+import Data.List  ( mapAccumL, isPrefixOf, intersperse )
+import System.IO
 
 infixl 1 #
 \end{code}
@@ -394,4 +398,29 @@ The simplest of defns; usefule, but not provided as standard:
 notNull :: [a] -> Bool
 notNull [] = False
 notNull  _ = True
+\end{code}
+
+\begin{code}
+toUnderscoreCamel s = concat . intersperse "_" $ splitCamel s
+
+splitCamel [] = []
+splitCamel s = let (r, rs) = spanCamel s in r : splitCamel rs
+
+spanCamel [] = ([], [])
+spanCamel [x] = ([x], [])
+spanCamel (x:y:ys) | isUpper x && isUpper y = let (r, rs) = upperCase (y:ys)
+                                              in (x:r, rs)
+  where
+    upperCase [] = ([], [])
+    upperCase [x] = ([x], [])
+    upperCase (x:y:ys) | isLower y = ([], x:y:ys)
+                       | otherwise = let (r, rs) = upperCase (y:ys)
+                                     in (x:r, rs)
+spanCamel (x:xs) = let (r, rs) = span (not . isUpper) xs
+                   in (x:r, rs)
+
+toLowerInitCamel s = let (x, xs) = spanCamel s in map toLower x ++ xs
+
+toUpperHead [] = []
+toUpperHead (x:xs) = toUpper x : xs
 \end{code}

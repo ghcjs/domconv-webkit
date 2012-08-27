@@ -27,8 +27,8 @@ data Defn
  | ExternDecl Type [Id]
  | Constant   Id [Attribute] Type Expr
  | Attributed [Attribute] Defn
- | Attribute  [Id] Bool Type
- | Operation  Id Type {-[Param]-} (Maybe Raises) (Maybe Context)
+ | Attribute  [Id] Bool Type [Raises] [ExtAttribute]
+ | Operation  Id Type {-[Param]-} [Raises] (Maybe Context) [ExtAttribute]
  | Exception  Id [Member]
  | Interface  Id Inherit [Defn]
  | Forward    Id
@@ -122,7 +122,16 @@ data Expr
  | Sizeof Type
    deriving ( Eq, Show )
 
-type Raises = [Name]
+data Raises = GetRaises [Name] | SetRaises [Name] | Raises [Name] deriving ( Eq, Show )
+getterRaises = filter isGet
+    where
+        isGet (SetRaises _) = False
+        isGet _ = True
+setterRaises = filter isSet
+    where
+        isSet (GetRaises _) = False
+        isSet _ = True
+
 type Context = [String]
 
 type CoClassMember = (Bool, Id, [Attribute])
@@ -142,6 +151,10 @@ data AttrParam
   | EmptyAttr         -- size_is(,e) => [EmptyAttr,attr_param e]
   | AttrLit Literal
   | AttrPtr AttrParam
+   deriving ( Eq, Show )
+
+data ExtAttribute
+  = ExtAttr Id
    deriving ( Eq, Show )
 
 data Switch    = Switch [CaseLabel] (Maybe SwitchArm) 

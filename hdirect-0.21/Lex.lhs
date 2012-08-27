@@ -11,10 +11,10 @@ module Lex
 	) where
 
 import LexM
-import Char
+import Data.Char
 import Numeric
 import IDLToken
-import List ( isPrefixOf )
+import Data.List ( isPrefixOf )
 import Literal
 import BasicTypes
 import Utils ( deEscapeString, notNull )

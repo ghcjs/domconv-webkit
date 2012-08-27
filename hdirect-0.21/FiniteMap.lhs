@@ -48,7 +48,7 @@ module FiniteMap (
 
     ) where
 
-import Maybe( isJust )
+import Data.Maybe( isJust )
 
 --import Bag	( foldBag )
 

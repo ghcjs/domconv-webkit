@@ -5,7 +5,7 @@
 module Opts where
 
 
-optDebug = False
+optDebug = True
 optCpp = True
 optNoQualNames = False
 optIntIsInt = True
@@ -17,6 +17,6 @@ optIncludeAsImport = False
 optExcludeSysIncludes = False
 
 optinclude_cppdirs = []
-optcpp_defines = []
+optcpp_defines = ["-DLANGUAGE_GOBJECT=1"]
 
 \end{code}
