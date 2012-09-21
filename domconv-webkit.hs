@@ -43,8 +43,6 @@ main = do
 
 makeWebkitBindings idl args = do
   putStrLn $ "The package will be created in the current directory which has to be empty."
-  parentMapExists <- doesFileExist "parentmap.txt"
-  when parentMapExists $ removeFile "parentmap.txt"
   putStrLn $ "Processing IDL: " ++ idl ++ " args " ++ show args
   ex <- processIDL idl args
   putStrLn (show ex)
@@ -93,14 +91,6 @@ procopts idl opts = do
   hsrc' <- hsrc
   hsrcpr <- runCpphs optsb inclfile hsrc'
   x <- runLexM [] inclfile hsrcpr OmgParser.parseIDL
---  let showMod (I.Module i d) = do
---        putStrLn $ "module" ++ show i
---        mapM (putStrLn . show) d
---        return ()
---      showMod _ = return ()
---  putStrLn "{--"
---  mapM showMod x
---  putStrLn "--}"
   let prntmap = mkParentMap x
   let valmsg = valParentMap prntmap
   when (length valmsg > 0) $ do
@@ -114,31 +104,6 @@ procopts idl opts = do
         ,convlog = []
       }
       modst' = domLoop modst x
---  mapM_ (hPutStrLn stderr) (convlog modst')
-  let getParent (a, (Right b):_) = (b, a)
-      getParent (a, _) = ("", a)
-  let unsupported = ["AbstractView","CSS2Properties","CSSCharsetRule","CSSFontFaceRule",
-                     "CSSImportRule","CSSMediaRule","CSSPageRule","CSSPrimitiveValue",
-                     "CSSStyleRule","CSSUnknownRule","CSSValueList","Counter",
-                     "DOMImplementationCSS","DocumentCSS","DocumentEvent","DocumentRange",
-                     "DocumentStyle","DocumentTraversal","DocumentView","DocumentWindow",
-                     "DocumentationCSS","ElementCSSInlineStyle","EmbeddingElement",
-                     "Entity","EventListener","HTMLAbbrElement","HTMLAcronymElement",
-                     "HTMLAddressElement","HTMLBElement","HTMLBdoElement",
-                     "HTMLBigElement","HTMLCenterElement","HTMLCiteElement",
-                     "HTMLCodeElement","HTMLDdElement","HTMLDfnElement","HTMLDtElement",
-                     "HTMLEmElement","HTMLIElement","HTMLIsIndexElement","HTMLKbdElement",
-                     "HTMLNoframesElement","HTMLNoscriptElement","HTMLSElement",
-                     "HTMLSampElement","HTMLSmallElement","HTMLSpanElement",
-                     "HTMLStrikeElement","HTMLStrongElement","HTMLSubElement",
-                     "HTMLSupElement","HTMLUElement","HTMLVarElement","KeyEvent",
-                     "KeyboardEvent","LinkStyle","MutationEvent","Notation","RGBColor",
-                     "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest"]
-
-      filterSupported = filter (not . flip elem unsupported . fst)
-  Prelude.appendFile "parentmap.txt" $ (unlines . map (show . getParent) . filterSupported $ M.toList prntmap)
-
---  let splitmod = splitModule (head $ procmod modst')
   mapM_ (mapM_ putSplit . splitModule) (procmod modst')
 
 
