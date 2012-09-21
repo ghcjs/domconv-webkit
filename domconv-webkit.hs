@@ -703,8 +703,8 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
     mkmeth op | getDef op `elem` ["getCSSCanvasContext", "getSVGDocument"] = []
-    mkmeth op | getDef op `elem` ["getCSSCanvasContext", "getSVGDocument"] = []
-    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") `elem` ext = []
     mkmeth op | skip op = []
     mkmeth op = tsig op : timpl op
