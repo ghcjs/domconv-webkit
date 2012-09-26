@@ -423,7 +423,7 @@ applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) e =
     I.TyName "DOMString" Nothing -> [jmacroE| $hs_fromUtf8(`(e)`) |]
     I.TyName "DOMTimeStamp" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) |]
     I.TyName "CompareHow" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) |]
-    I.TyName "Bool" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) |]
+    I.TyName "Bool" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) != 0 |]
     I.TyName x Nothing -> e
     I.TyInteger _ -> [jmacroE| $hs_intToNumber(`(e)`) |]
     I.TyFloat _   -> e
@@ -436,7 +436,7 @@ returnType :: I.Type -> JExpr -> JExpr
 returnType (I.TyName "DOMString" Nothing) e = [jmacroE| $hs_toUtf8(`(e)`) |]
 returnType (I.TyName "DOMTimeStamp" Nothing) e = [jmacroE| $hs_int(`(e)`) |]
 returnType (I.TyName "CompareHow" Nothing) e = [jmacroE| $hs_int(`(e)`) |]
-returnType (I.TyName "Bool" Nothing) e = [jmacroE| $hs_int(`(e)`) |]
+returnType (I.TyName "Bool" Nothing) e = [jmacroE| $hs_int(`(e)`?1:0) |]
 returnType (I.TyName x Nothing) e = e
 returnType (I.TyInteger _) e = [jmacroE| $hs_int(`(e)`) |]
 returnType (I.TyFloat _) e = e
