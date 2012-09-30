@@ -240,7 +240,9 @@ intf2type :: I.Defn -> [JStat]
 intf2type intf@(I.Interface _ _ _) = [[jmacro| `(jsv functionName)` = \ -> `(jsv typeName)` |]]
   where
     functionName = "webkit_dom_" ++ gtkName (getDef intf) ++ "_get_type"
-    typeName = getDef intf
+    typeName = jsType $ getDef intf
+    jsType "DOMWindow" = "Window"
+    jsType n = n
 
 intf2type _ = []
 
