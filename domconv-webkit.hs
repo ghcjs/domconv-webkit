@@ -42,35 +42,37 @@ main = do
     idl:args -> makeWebkitBindings idl args
 
 makeWebkitBindings idl args = do
-  putStrLn $ "The package will be created in the current directory which has to be empty."
-  putStrLn $ "Processing IDL: " ++ idl ++ " args " ++ show args
-  ex <- processIDL idl args
-  putStrLn (show ex)
-  l <- M.fromListWith S.union . map ((\(a,b)->(a,S.singleton b)) . read) . lines <$> readFile "parentmap.txt"
-  hh <- openFile "hierarchy.list.new" WriteMode
-  current <- readFile "hierarchy.list"
-  mapM_ (hPutStrLn hh) .
-    filter (not . isSuffixOf " if webkit-dom") $ lines current
-  let underscore "HTMLIFrameElement" = "html_iframe_element"
-      underscore "XPathExpression" = "xpath_expression"
-      underscore "XPathNSResolver" = "xpath_ns_resolver"
-      underscore "XPathResult" = "xpath_result"
-      underscore "WebKitNamedFlow" = "webkit_named_flow"
-      underscore "WebKitPoint" = "webkit_point"
-      underscore c = U.toUnderscoreCamel c
-      hierarchy n parent =
-        case M.lookup parent l of
-            Just s -> do
-                forM_ (S.toList s) $ \child -> do
-                    hPutStrLn hh $ replicate n ' ' ++ "WebKitDOM" ++ child ++ " as " ++ typeFor child
-                            ++ ", webkit_dom_" ++ map toLower (underscore child) ++ "_get_type if webkit-dom"
-                    hierarchy (n+4) child
-            _ -> return ()
-  hierarchy 8 ""
-  hClose hh
-  renameFile "hierarchy.list" "hierarchy.list.old"
-  renameFile "hierarchy.list.new" "hierarchy.list"
-  exitWith (ExitSuccess)
+    putStrLn $ "The package will be created in the current directory which has to be empty."
+    putStrLn $ "Processing IDL: " ++ idl ++ " args " ++ show args
+    prntmap <- processIDL idl args
+    let reversedMap = M.fromListWith S.union $ map (\(a,b)->(a,S.singleton b)) prntmap
+    fixHierarchy reversedMap "hierarchy.list"
+    fixHierarchy reversedMap "hierarchy3.list"
+    exitWith (ExitSuccess)
+  where
+    fixHierarchy reversedMap hierarchyFile = do
+        hh <- openFile (hierarchyFile ++ ".new") WriteMode
+        current <- readFile hierarchyFile
+        mapM_ (hPutStrLn hh) . filter (not . isSuffixOf " if webkit-dom") $ lines current
+        let underscore "HTMLIFrameElement" = "html_iframe_element"
+            underscore "XPathExpression" = "xpath_expression"
+            underscore "XPathNSResolver" = "xpath_ns_resolver"
+            underscore "XPathResult" = "xpath_result"
+            underscore "WebKitNamedFlow" = "webkit_named_flow"
+            underscore "WebKitPoint" = "webkit_point"
+            underscore c = U.toUnderscoreCamel c
+            hierarchy n parent =
+                case M.lookup parent reversedMap of
+                    Just s -> do
+                        forM_ (S.toList s) $ \child -> do
+                            hPutStrLn hh $ replicate n ' ' ++ "WebKitDOM" ++ child ++ " as " ++ typeFor child
+                                    ++ ", webkit_dom_" ++ map toLower (underscore child) ++ "_get_type if webkit-dom"
+                            hierarchy (n+4) child
+                    _ -> return ()
+        hierarchy 8 ""
+        hClose hh
+        renameFile hierarchyFile (hierarchyFile ++ ".old")
+        renameFile (hierarchyFile ++ ".new") hierarchyFile
 
 processIDL idl args = do
   let epopts = parseOptions ("-DLANGUAGE_GOBJECT=1":args)
@@ -105,6 +107,29 @@ procopts idl opts = do
       }
       modst' = domLoop modst x
   mapM_ (mapM_ putSplit . splitModule) (procmod modst')
+
+  let getParent (a, (Right b):_) = (b, a)
+      getParent (a, _) = ("", a)
+  let unsupported = ["AbstractView","CSS2Properties","CSSCharsetRule","CSSFontFaceRule",
+                     "CSSImportRule","CSSMediaRule","CSSPageRule","CSSPrimitiveValue",
+                     "CSSStyleRule","CSSUnknownRule","CSSValueList","Counter",
+                     "DOMImplementationCSS","DocumentCSS","DocumentEvent","DocumentRange",
+                     "DocumentStyle","DocumentTraversal","DocumentView","DocumentWindow",
+                     "DocumentationCSS","ElementCSSInlineStyle","EmbeddingElement",
+                     "Entity","EventListener","HTMLAbbrElement","HTMLAcronymElement",
+                     "HTMLAddressElement","HTMLBElement","HTMLBdoElement",
+                     "HTMLBigElement","HTMLCenterElement","HTMLCiteElement",
+                     "HTMLCodeElement","HTMLDdElement","HTMLDfnElement","HTMLDtElement",
+                     "HTMLEmElement","HTMLIElement","HTMLIsIndexElement","HTMLKbdElement",
+                     "HTMLNoframesElement","HTMLNoscriptElement","HTMLSElement",
+                     "HTMLSampElement","HTMLSmallElement","HTMLSpanElement",
+                     "HTMLStrikeElement","HTMLStrongElement","HTMLSubElement",
+                     "HTMLSupElement","HTMLUElement","HTMLVarElement","KeyEvent",
+                     "KeyboardEvent","LinkStyle","MutationEvent","Notation","RGBColor",
+                     "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest"]
+
+      filterSupported = filter (not . flip elem unsupported . fst)
+  return . map getParent . filterSupported $ M.toList prntmap
 
 
 -- Retrieve a module name as a string from Module
