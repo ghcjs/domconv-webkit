@@ -56,6 +56,8 @@ makeWebkitBindings idl args = do
       underscore "XPathResult" = "xpath_result"
       underscore "WebKitNamedFlow" = "webkit_named_flow"
       underscore "WebKitPoint" = "webkit_point"
+      underscore "WebKitAnimation" = "webkit_animation"
+      underscore "WebKitAnimationList" = "webkit_animation_list"
       underscore c = U.toUnderscoreCamel c
 --      hierarchy n parent =
 --        case M.lookup parent l of

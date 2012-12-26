@@ -60,6 +60,8 @@ makeWebkitBindings idl args = do
             underscore "XPathResult" = "xpath_result"
             underscore "WebKitNamedFlow" = "webkit_named_flow"
             underscore "WebKitPoint" = "webkit_point"
+            underscore "WebKitAnimation" = "webkit_animation"
+            underscore "WebKitAnimationList" = "webkit_animation_list"
             underscore c = U.toUnderscoreCamel c
             hierarchy n parent =
                 case M.lookup parent reversedMap of
@@ -852,6 +854,7 @@ tyRet (I.TyName c Nothing) = case (asIs c) of
 tyRet  I.TyVoid  = H.HsTyTuple []
 tyRet (I.TyInteger LongLong) = mkTIdent "Int64"
 tyRet (I.TyInteger _) = mkTIdent "Int"
+tyRet (I.TyFloat Short) = mkTIdent "Float"
 tyRet (I.TyFloat _) = mkTIdent "Double"
 tyRet (I.TyApply (I.TySigned False) (I.TyInteger LongLong)) = mkTIdent "Word64"
 tyRet (I.TyApply (I.TySigned False) (I.TyInteger _)) = mkTIdent "Word"
