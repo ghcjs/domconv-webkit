@@ -24,6 +24,7 @@ import Data.IORef
 import Control.Monad
 import System.CPUTime (getCPUTime)
 import System.IO.Unsafe (unsafePerformIO)
+import Control.Exception (catch, SomeException(..))
 
 count :: IORef Int
 count = unsafePerformIO (newIORef 0)
@@ -41,7 +42,7 @@ preProcessFile fname
   v   <- readIORef count
   writeIORef count (v+1)
   tmp <- catch (getEnv "TMPDIR") 
-               (\ _ -> return "/tmp/")
+               (\ (_::SomeException) -> return "/tmp/")
   let tmpnam = prefixDir tmp ("ihc" ++ show pt ++ show v)
   let
       tmpnam1 = tmpnam ++ ".c"
@@ -66,7 +67,7 @@ preProcessFile fname
         ' ':unwords optcpp_defines
 
   cpp <- catch (getEnv "CPP")
-               (\ _ -> return ("gcc -E -x c"))
+               (\(_::SomeException) -> return ("gcc -E -x c"))
   hdl <- openFile tmpnam1 WriteMode
   hPutStrLn hdl oput
   hClose hdl
@@ -79,10 +80,10 @@ removeTmp :: IO ()
 removeTmp = do
   pt <- readIORef prefix
   tmp <- catch (getEnv "TMPDIR")
-               ( \ _ -> return "/tmp/")
+               ( \ (_::SomeException) -> return "/tmp/")
   let tmpnam = prefixDir tmp ("ihc" ++ show pt ++ "*")
   del_cmd <- catch (getEnv "DELPROG")
-                   ( \ _ -> return "rm -f")
+                   ( \ (_::SomeException) -> return "rm -f")
   let cmd    = del_cmd ++ ' ':tmpnam
   when optDebug (hPutStrLn stderr ("Clearing out temporary files: " ++ cmd))
   system cmd

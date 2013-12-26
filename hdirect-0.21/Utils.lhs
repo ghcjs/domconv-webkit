@@ -64,6 +64,7 @@ import Directory
 import Control.Monad ( when )
 import Data.List  ( mapAccumL, isPrefixOf, intersperse )
 import System.IO
+import Control.Exception (catch, SomeException(..))
 
 infixl 1 #
 \end{code}
@@ -282,7 +283,7 @@ mbOpenFile verbose fpath = do
   END_GHC_ONLY -}
 {- BEGIN_NOT_FOR_GHC -}
   flg <- (openFile fpath ReadMode >>= \ h -> hClose h >> return True)
-            `catch` (\ _ -> return False)
+            `catch` (\ (_::SomeException) -> return False)
 {- END_NOT_FOR_GHC -}
   if not flg 
    then return Nothing

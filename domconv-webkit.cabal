@@ -73,3 +73,10 @@ Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, 
 
 Extensions:     ScopedTypeVariables
 
+Executable:     domconv-webkit-jsffi
+Main-is:        domconv-webkit-jsffi.hs
+Hs-source-dirs: ., hdirect-0.21
+Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+
+Extensions:     ScopedTypeVariables

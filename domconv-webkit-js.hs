@@ -36,9 +36,6 @@ import Language.Javascript.JMacro (jmacro, jmacroE, jLam, JExpr(..), JVal(..),
   Ident(..), jVarTy, JStat(..), toJExpr, renderJs, jsv)
 import Data.Monoid (mconcat)
 
-x = [jmacro| function x(a, b, c, d) {return a[2](b,c,d);} |]
-x2 = renderJs $ JFunc [StrI "a"] [jmacro| return 1; |]
-
 main = do
   putStrLn "domconv-webkit-js : Makes JavaScript alternatives for webkitgtk"
   p <- getProgName
@@ -101,7 +98,7 @@ procopts idl opts = do
         ,convlog = []
       }
       modst' = domLoop modst x
-  f <- openFile "rts-webkit.js" WriteMode
+  f <- openFile "webkit-dom.js" WriteMode
   forM_ (procmod modst') $ \ (interface, js) -> do
     hPutStrLn f $ "// " ++ interface
     hPutStrLn f . show $ renderJs js
@@ -239,9 +236,9 @@ mod2mod _ z = error $ "Input of mod2mod should be a Module but is " ++ show z
 -- For each interface found, define a newtype with the same name
 
 intf2type :: I.Defn -> [JStat]
-intf2type intf@(I.Interface _ _ _) = [[jmacro| `(jsv functionName)` = \ -> `(jsv typeName)` |]]
+intf2type intf@(I.Interface _ _ _) = [[jmacro| `(jsv functionName)` = \ -> h$g_get_type(`(jsv typeName)`) |]]
   where
-    functionName = "webkit_dom_" ++ gtkName (getDef intf) ++ "_get_type"
+    functionName = "h$webkit_dom_" ++ gtkName (getDef intf) ++ "_get_type"
     typeName = jsType $ getDef intf
     jsType "DOMWindow" = "Window"
     jsType n = n
@@ -340,17 +337,17 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
         BlockStat [ DeclStat (StrI ffi) Nothing,
            [jmacro| `(jsv ffi)` = `(func)` |] ]
       where
-        ffi = "webkit_dom_" ++ gtkName (setf intf iat)
-        func = JFunc [StrI "self", StrI "val"] [jmacro| self[`(iat)`] = `(rhs)`; |]
-        rhs = applyParam val [jmacroE| val |]
+        ffi = "h$webkit_dom_" ++ gtkName (setf intf iat)
+        func = JFunc (map StrI $ ["self", "self_2"] ++ paramName val) [jmacro| self[`(iat)`] = `(rhs)`; |]
+        rhs = applyParam val
         val = I.Param (I.Id "val") tat [I.Mode In]
     mkgetter iid iat tat r = [gimpl iid iat tat r]
     gimpl iid iat tat raises =
         BlockStat [ DeclStat (StrI ffi) Nothing,
            [jmacro| `(jsv ffi)` = `(func)` |] ]
       where
-        ffi = "webkit_dom_" ++ gtkName (getf intf iat)
-        func = JFunc [StrI "self"] [jmacro| return `(call)` |]
+        ffi = "h$webkit_dom_" ++ gtkName (getf intf iat)
+        func = JFunc [StrI "self", StrI "self_2"] call
         call = returnType tat $ [jmacroE| self[`(iat)`] |]
 
 intf2attr _ = []
@@ -376,10 +373,10 @@ intf2meth intf@(I.Interface _ _ cldefs) =
         BlockStat [ DeclStat (StrI ffi) Nothing,
            [jmacro| `(jsv ffi)` = `(func)` |] ]
       where
-        func = JFunc (StrI "self": map (StrI . paramName) parm) [jmacro| return `(call)` |]
+        func = JFunc (StrI "self" : StrI "self_2" : concatMap (map StrI . paramName) parm) call
         call = returnType optype $ ApplExpr [jmacroE| self[`(getDef op)`] |]
-                  (map (\p -> applyParam p $ jsv (paramName p)) parm)
-        ffi = "webkit_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
+                  (map applyParam parm)
+        ffi = "h$webkit_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
     excludedParam (I.Param _ (I.TyName "EventListener" _) _) = True
     excludedParam (I.Param _ (I.TyName "MediaQueryListListener" _) _) = True
@@ -416,36 +413,46 @@ asIs "Bool"         = Just "Bool"
 asIs "Int"          = Just "Int"
 asIs _              = Nothing
 
-paramName (I.Param (I.Id p) _ _) = p
+paramName param@(I.Param (I.Id p) ptype [I.Mode In]) =
+  case ptype of
+    I.TyName "DOMString" Nothing -> [p,p++"_2"]
+    I.TyName "DOMTimeStamp" Nothing -> [p]
+    I.TyName "CompareHow" Nothing -> [p]
+    I.TyName "Bool" Nothing -> [p]
+    I.TyName _ Nothing -> [p,p++"_2"]
+    I.TyInteger _ -> [p]
+    I.TyFloat _   -> [p]
+    I.TyApply _ (I.TyInteger _) -> [p]
+    t -> error $ "Param type " ++ (show t)
 
 -- Apply a parameter to a FFI call
 
-applyParam :: I.Param -> JExpr -> JExpr
+applyParam :: I.Param -> JExpr
 
-applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) e =
+applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) =
   case ptype of
-    I.TyName "DOMString" Nothing -> [jmacroE| $hs_fromUtf8(`(e)`) |]
-    I.TyName "DOMTimeStamp" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) |]
-    I.TyName "CompareHow" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) |]
-    I.TyName "Bool" Nothing -> [jmacroE| $hs_intToNumber(`(e)`) != 0 |]
-    I.TyName x Nothing -> e
-    I.TyInteger _ -> [jmacroE| $hs_intToNumber(`(e)`) |]
-    I.TyFloat _   -> e
-    I.TyApply _ (I.TyInteger _) -> [jmacroE| $hs_intToNumber(`(e)`) |]
+    I.TyName "DOMString" Nothing -> [jmacroE| h$decodeUtf8z(`(jsv p)`,`(jsv $ p ++ "_2")`) |]
+    I.TyName "DOMTimeStamp" Nothing -> jsv p
+    I.TyName "CompareHow" Nothing -> jsv p
+    I.TyName "Bool" Nothing -> jsv p
+    I.TyName x Nothing -> jsv p
+    I.TyInteger _ -> jsv p
+    I.TyFloat _   -> jsv p
+    I.TyApply _ (I.TyInteger _) -> jsv p
     t -> error $ "Param type " ++ (show t)
 
-applyParam (I.Param _ _ _) _ = error "Unsupported parameter attributes"
+applyParam (I.Param _ _ _) = error "Unsupported parameter attributes"
 
-returnType :: I.Type -> JExpr -> JExpr
-returnType (I.TyName "DOMString" Nothing) e = [jmacroE| $hs_toUtf8(`(e)`) |]
-returnType (I.TyName "DOMTimeStamp" Nothing) e = [jmacroE| $hs_int(`(e)`) |]
-returnType (I.TyName "CompareHow" Nothing) e = [jmacroE| $hs_int(`(e)`) |]
-returnType (I.TyName "Bool" Nothing) e = [jmacroE| $hs_int(`(e)`?1:0) |]
-returnType (I.TyName x Nothing) e = e
-returnType (I.TyInteger _) e = [jmacroE| $hs_int(`(e)`) |]
-returnType (I.TyFloat _) e = e
-returnType (I.TyApply _ (I.TyInteger _)) e = [jmacroE| $hs_int(`(e)`) |]
-returnType t e = e
+returnType :: I.Type -> JExpr -> JStat
+returnType (I.TyName "DOMString" Nothing) e = [jmacro| h$ret1=0; return h$encodeUtf8(`(e)`) |]
+returnType (I.TyName "DOMTimeStamp" Nothing) e = [jmacro| return `(e)` |]
+returnType (I.TyName "CompareHow" Nothing) e = [jmacro| return `(e)` |]
+returnType (I.TyName "Bool" Nothing) e = [jmacro| return `(e)`?1:0 |]
+returnType (I.TyName x Nothing) e = [jmacro|  h$ret1=0; return `(e)` |]
+returnType (I.TyInteger _) e = [jmacro| return `(e)` |]
+returnType (I.TyFloat _) e = [jmacro| return `(e)` |]
+returnType (I.TyApply _ (I.TyInteger _)) e = [jmacro| return `(e)` |]
+returnType t e = [jmacro| return `(e)` |]
 
 gtkName s =
     let lower = map toLower (U.toUnderscoreCamel s) in
