@@ -340,7 +340,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
         ffi = "h$webkit_dom_" ++ gtkName (setf intf iat)
         func = JFunc (map StrI $ ["self", "self_2"] ++ paramName val) [jmacro| self[`(iat)`] = `(rhs)`; |]
         rhs = applyParam val
-        val = I.Param (I.Id "val") tat [I.Mode In]
+        val = I.Param I.Required (I.Id "val") tat [I.Mode In]
     mkgetter iid iat tat r = [gimpl iid iat tat r]
     gimpl iid iat tat raises =
         BlockStat [ DeclStat (StrI ffi) Nothing,
@@ -378,8 +378,8 @@ intf2meth intf@(I.Interface _ _ cldefs) =
                   (map applyParam parm)
         ffi = "h$webkit_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
-    excludedParam (I.Param _ (I.TyName "EventListener" _) _) = True
-    excludedParam (I.Param _ (I.TyName "MediaQueryListListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
     excludedParam _ = False
 
 intf2meth _ = []
@@ -413,7 +413,7 @@ asIs "Bool"         = Just "Bool"
 asIs "Int"          = Just "Int"
 asIs _              = Nothing
 
-paramName param@(I.Param (I.Id p) ptype [I.Mode In]) =
+paramName param@(I.Param _ (I.Id p) ptype [I.Mode In]) =
   case ptype of
     I.TyName "DOMString" Nothing -> [p,p++"_2"]
     I.TyName "DOMTimeStamp" Nothing -> [p]
@@ -429,7 +429,7 @@ paramName param@(I.Param (I.Id p) ptype [I.Mode In]) =
 
 applyParam :: I.Param -> JExpr
 
-applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) =
+applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) =
   case ptype of
     I.TyName "DOMString" Nothing -> [jmacroE| h$decodeUtf8z(`(jsv p)`,`(jsv $ p ++ "_2")`) |]
     I.TyName "DOMTimeStamp" Nothing -> jsv p
@@ -441,7 +441,7 @@ applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) =
     I.TyApply _ (I.TyInteger _) -> jsv p
     t -> error $ "Param type " ++ (show t)
 
-applyParam (I.Param _ _ _) = error "Unsupported parameter attributes"
+applyParam param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
 
 returnType :: I.Type -> JExpr -> JStat
 returnType (I.TyName "DOMString" Nothing) e = [jmacro| h$ret1=0; return h$encodeUtf8(`(e)`) |]

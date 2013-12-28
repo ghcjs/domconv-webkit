@@ -175,7 +175,7 @@ procopts idl opts = do
                      "HTMLSampElement","HTMLSmallElement","HTMLSpanElement",
                      "HTMLStrikeElement","HTMLStrongElement","HTMLSubElement",
                      "HTMLSupElement","HTMLUElement","HTMLVarElement","KeyEvent",
-                     "KeyboardEvent","LinkStyle","MutationEvent","Notation","RGBColor",
+                     "LinkStyle","MutationEvent","Notation","RGBColor",
                      "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest"]
 
       filterSupported = filter (not . flip elem unsupported . fst)
@@ -657,7 +657,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     sjsffi iid iat tat =
       let monadtv = mkTIdent "IO"
           defop = iid ++ "|" ++ "ghcjs_dom_" ++ gtkName (setf intf iat)
-          parm = [I.Param (I.Id "val") tat [I.Mode In]]
+          parm = [I.Param I.Required (I.Id "val") tat [I.Mode In]]
           parms = ffiTySelf intf : map (fst . tyParmFFI) parm
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType [] tpsig
@@ -674,13 +674,13 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
                         H.HsApp
                             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
                             (H.HsVar . H.UnQual $ H.HsIdent "self"))
-          val = I.Param (I.Id "val") tat [I.Mode In]
+          val = I.Param I.Required (I.Id "val") tat [I.Mode In]
           rhs = H.HsUnGuardedRhs $ propExcept (I.setterRaises raises) $ applyParam val call
           match = H.HsMatch nullLoc (H.HsIdent defset) parms rhs [] in
       H.HsFunBind [match]
     stsig iid iat tat =
       let defset = iid ++ "|" ++ setf intf iat
-          parm = I.Param (I.Id "val") tat [I.Mode In]
+          parm = I.Param I.Required (I.Id "val") tat [I.Mode In]
           parms = mkTIdent "self" : (fst . tyParm $ parm) : []
           contxt = ctxSelf iid : (snd . tyParm $ parm)
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
@@ -866,8 +866,8 @@ intf2meth intf@(I.Interface _ _ cldefs) =
       in  [H.HsFunBind [match]]
     jsffiName op = "ghcjs_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
-    excludedParam (I.Param _ (I.TyName "EventListener" _) _) = True
-    excludedParam (I.Param _ (I.TyName "MediaQueryListListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
     excludedParam _ = False
 
 intf2meth _ = []
@@ -1043,7 +1043,7 @@ tyParm = tyParm' False
 tyParmFFI :: I.Param -> (H.HsType, [H.HsAsst])
 tyParmFFI = tyParm' True
 
-tyParm' ffi param@(I.Param (I.Id _) ptype [I.Mode In]) =
+tyParm' ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) =
   let p = mkTIdent (paramName param) in
   case ptype of
     I.TyName "DOMString" Nothing | ffi -> (mkTIdent "JSString", [])
@@ -1065,7 +1065,7 @@ tyParm' ffi param@(I.Param (I.Id _) ptype [I.Mode In]) =
     I.TyApply _ (I.TyInteger _) -> (mkTIdent "Int",[])
     t -> error $ "Param type " ++ (show t)
 
-tyParm' _ (I.Param _ _ _) = error "Unsupported parameter attributes"
+tyParm' _ param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
 
 -- Some types pass through as is, other are class names
 
@@ -1080,16 +1080,16 @@ asIs _ "Bool"         = Just "Bool"
 asIs _ "Int"          = Just "Int"
 asIs _ _              = Nothing
 
-paramName (I.Param (I.Id "data") _ _)  = "data'"
-paramName (I.Param (I.Id "type") _ _)  = "type'"
-paramName (I.Param (I.Id "where") _ _) = "where'"
-paramName (I.Param (I.Id p) _ _) = p
+paramName (I.Param _ (I.Id "data") _ _)  = "data'"
+paramName (I.Param _ (I.Id "type") _ _)  = "type'"
+paramName (I.Param _ (I.Id "where") _ _) = "where'"
+paramName (I.Param _ (I.Id p) _ _) = p
 
 -- Apply a parameter to a FFI call
 
 applyParam :: I.Param -> H.HsExp -> H.HsExp
 
-applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) call =
+applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) call =
   let pname = mkVar $ paramName param in
   case ptype of
     I.TyName "DOMString" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "toJSString") pname)
@@ -1126,7 +1126,7 @@ applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) call =
     I.TyApply _ (I.TyInteger _) -> H.HsApp call pname
     t -> error $ "Param type " ++ (show t)
 
-applyParam (I.Param _ _ _) _ = error "Unsupported parameter attributes"
+applyParam param@(I.Param _ _ _ _) _ = error $ "Unsupported parameter attributes " ++ show param
 
 returnType :: I.Type -> H.HsExp -> H.HsExp
 returnType (I.TyName "DOMString" Nothing) e = H.HsApp (H.HsApp (mkVar "fromJSString") (mkVar "<$>")) (H.HsParen e)

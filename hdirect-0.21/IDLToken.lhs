@@ -42,6 +42,7 @@ data IDLToken
  = T_semi
  | T_module
  | T_interface
+ | T_implements
  | T_oparen
  | T_cparen
  | T_ocurly
@@ -97,6 +98,7 @@ data IDLToken
  | T_exception
  | T_void
  | T_mode ParamDir
+ | T_optional
  | T_raises
  | T_context
  | T_getter
@@ -165,7 +167,9 @@ std_idl_keywords =
     , ("enum",		T_enum)
     , ("float",  	T_float Short)
     , ("in",  	        T_mode In)
+    , ("optional",  	T_optional)
     , ("interface",	T_interface)
+    , ("implements",	T_implements)
     , ("import",	T_import)
     , ("long",          T_int Long)
     , ("int",           T_int Natural)

@@ -33,6 +33,7 @@ END_GHC_ONLY
 	';'	      { T_semi }
         MODULE	      { T_module }
         INTERFACE     { T_interface }
+        IMPLEMENTS    { T_implements }
         '('           { T_oparen }
         ')'           { T_cparen }
         '{'           { T_ocurly }
@@ -79,6 +80,7 @@ END_GHC_ONLY
         ']'           { T_csquare }
         VOID          { T_void }
         MODE          { T_mode $$ }
+        OPTIONAL      { T_optional }
         LITERAL       { T_literal $$ }
         STRING_LIT    { T_string_lit $$ }
 	ID	      { T_id $$ }
@@ -118,6 +120,7 @@ definition   :: { Defn }
    | const_decl opt_semiColon { $1 }
    | except_decl opt_semiColon { $1 }
    | interface opt_semiColon { $1 }
+   | implements opt_semiColon { $1 }
    | module opt_semiColon   { $1 }
    | PRAGMA                 { Pragma $1 }
    | INCLUDE_START          { IncludeStart $1 }
@@ -132,13 +135,16 @@ module :: { Defn }
 
 interface :: { Defn }
    : interface_decl	    { $1 }
-   | INTERFACE opt_extended_attributes identifier   { Forward $3 }
+   | opt_extended_attributes INTERFACE identifier   { Forward $3 }
 
 interface_decl :: { Defn }
    : interface_header '{' exports '}'  { let (ids,inherit) = $1 in Interface ids inherit (reverse $3) }
 
 interface_header :: { (Id, Inherit) }
-   : INTERFACE opt_extended_attributes identifier opt_inheritance_spec { ($3,$4) }
+   : opt_extended_attributes INTERFACE identifier opt_inheritance_spec { ($3,$4) }
+
+implements :: { Defn }
+   : identifier IMPLEMENTS identifier   { Implements $1 $3 }
 
 exports :: { [Defn] }
    : {-empty-}			{    []   }
@@ -367,7 +373,7 @@ case_label :: { CaseLabel }
    | DEFAULT ':'		{ Default }
 
 element_spec :: { SwitchArm }
-   : type_spec declarator	{ (Param $2 $1 []) }
+   : type_spec declarator	{ (Param Required $2 $1 []) }
 
 enum_type :: { Type }
    : ENUM identifier '{' enumerators '}' { TyEnum (Just $2) (reverse $4) }
@@ -395,7 +401,7 @@ fixed_array_size  :: { Expr }
    : '[' positive_int_const ']'		{ $2 }
 
 attr_decl   :: { Defn }
-   : opt_readonly ATTRIBUTE opt_extended_attributes param_type_spec simple_declarators raises_exprs { Attribute (reverse $5) $1 $4 $6 $3 }
+   : opt_extended_attributes opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $5) $2 $4 $6 $1 }
 
 opt_readonly :: { Bool }
    : READONLY   { True } | {-empty-} { False }
@@ -420,13 +426,18 @@ members :: { [Member] }
    | members member		{ $2:$1 }
 
 op_decl :: { Defn }
-   : opt_op_attribute opt_extended_attributes op_type_spec identifier parameter_decls raises_exprs mb_context_expr
-		{ Operation (FunId $4 Nothing $5) $3 $6 $7 $2 }
+   : opt_extended_attributes opt_op_attribute op_type_spec identifier parameter_decls raises_exprs mb_context_expr
+		{ Operation (FunId $4 Nothing $5) $3 $6 $7 $1 }
+   | opt_extended_attributes GETTER op_type_spec identifier parameter_decls raises_exprs mb_context_expr
+		{ Operation (FunId $4 Nothing $5) $3 $6 $7 $1 }
+   | opt_extended_attributes GETTER op_type_spec parameter_decls raises_exprs mb_context_expr
+		{ Operation (FunId Getter Nothing $4) $3 $5 $6 $1 }
 
 opt_op_attribute :: { Bool }
    : {-nothing-}			{ False }
    | ONEWAY				{ True  }
    | STATIC				{ False  }
+   | GETTER				{ False  } -- TODO
 
 op_type_spec :: { Type }
    : param_type_spec			{ $1 }
@@ -441,10 +452,12 @@ param_decls :: { [Param] }
    | param_decls ',' param_decl		{ $3:$1 }
 
 param_decl :: { Param }
-   : param_attribute opt_extended_attributes param_type_spec simple_declarator { Param $4 $3 [$1] }
+   : param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator { Param Optional $5 $4 [$1] }
+   | param_attribute opt_extended_attributes param_type_spec simple_declarator { Param Required $4 $3 [$1] }
 
 param_attribute :: { Attribute }
-   : MODE	{ Mode $1 }
+   : {-nothing-}	{ Mode In }
+   | MODE		{ Mode $1 }
 
 raises_expr :: { Raises }
    : RAISES '(' scoped_name_list ')' { Raises (reverse $3) }
@@ -469,9 +482,8 @@ string_lit_list  :: { [String] }
    | string_lit_list ',' STRING_LIT     { $3:$1 }
 
 param_type_spec :: { Type }
-   : base_type_spec		{ $1 }
-   | wide_string_type		{ $1 }
-   | fixed_pt_type		{ $1 }
+   : base_type_spec			{ $1 }
+   | template_type_spec			{ $1 }
    | scoped_name		{ TyName $1 Nothing }
    | param_type_spec '[' ']'	{ TySafeArray $1 }
 

@@ -31,6 +31,7 @@ data Defn
  | Operation  Id Type {-[Param]-} [Raises] (Maybe Context) [ExtAttribute]
  | Exception  Id [Member]
  | Interface  Id Inherit [Defn]
+ | Implements Id Id
  | Forward    Id
    -- MS specific declaration groups:
  | Module        Id [Defn]
@@ -69,6 +70,7 @@ data Id
  | Pointed [[Qualifier]] Id
  | CConvId CallConv Id
  | BitFieldId Int   Id
+ | Getter
  | FunId Id (Maybe CallConv) [Param]
    deriving ( Eq, Show )
  
@@ -136,7 +138,9 @@ type Context = [String]
 
 type CoClassMember = (Bool, Id, [Attribute])
 
-data Param      = Param Id Type [Attribute]
+data Optionality = Optional | Required deriving ( Eq, Show )
+
+data Param      = Param Optionality Id Type [Attribute]
 		  deriving ( Eq, Show )
 
 type Member     = (Type, [Attribute], [Id])

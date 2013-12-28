@@ -565,18 +565,18 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
       (if I.ExtAttr (I.Id "Replaceable") `elem` ext
         then []
-        else mksetter iid iat tat raises)
-      ++ mkgetter iid iat tat raises
-    mkattr (I.Attribute [I.Id iat] True  tat raises _) = mkgetter iid iat tat raises
+        else mksetter iid iat tat raises ext)
+      ++ mkgetter iid iat tat raises ext
+    mkattr (I.Attribute [I.Id iat] True  tat raises ext) = mkgetter iid iat tat raises ext
     mkattr (I.Attribute (iatt:iats) b tat raises ext) =
       mkattr (I.Attribute [iatt] b tat raises ext) ++ mkattr (I.Attribute iats b tat raises ext)
-    mksetter iid iat tat r = [stsig iid iat tat, simpl iid iat tat r]
+    mksetter iid iat tat r ext = [stsig iid iat tat, simpl iid iat tat r ext]
     monadtv = mkTIdent "IO"
     setf intf iat = U.toLowerInitCamel $ getDef intf ++ "Set" ++ U.toUpperHead iat
     getf intf iat = U.toLowerInitCamel $ getDef intf ++ "Get" ++ U.toUpperHead iat
     eventName iat = maybe iat id (stripPrefix "on" iat)
     eventf intf iat = U.toLowerInitCamel $ getDef intf ++ U.toUpperHead iat
-    simpl iid iat tat raises =
+    simpl iid iat tat raises ext =
       let defset = iid ++ "|" ++ setf intf iat
           ffi = foldl H.HsApp (mkVar "{#") [H.HsVar . H.UnQual . H.HsIdent $ "call",
                 H.HsVar . H.UnQual . H.HsIdent $ "webkit_dom_" ++ gtkName (setf intf iat),
@@ -585,21 +585,22 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           call = (H.HsApp ffi . H.HsParen $ H.HsApp
             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
             (H.HsVar . H.UnQual $ H.HsIdent "self"))
-          val = I.Param (I.Id "val") tat [I.Mode In]
-          rhs = H.HsUnGuardedRhs $ propExcept (I.setterRaises raises) $ applyParam val call
+          val = I.Param I.Required (I.Id "val") tat [I.Mode In]
+          canRaise = (not $ null (I.setterRaises raises)) || (I.ExtAttr $ I.Id "SetterRaisesException") `elem` ext
+          rhs = H.HsUnGuardedRhs $ propExcept canRaise $ applyParam val call
           match = H.HsMatch nullLoc (H.HsIdent defset) parms rhs [] in
       H.HsFunBind [match]
     stsig iid iat tat =
       let ityp = I.TyName iid Nothing
           defset = iid ++ "|" ++ setf intf iat
-          parm = [I.Param (I.Id "val") tat [I.Mode In]]
+          parm = [I.Param I.Required (I.Id "val") tat [I.Mode In]]
           parms = mkTIdent "self" : (map (fst . tyParm) parm)
           contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet ityp
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
-    mkgetter iid iat tat r = [gtsig iid iat tat, gimpl iid iat tat r]
-    gimpl iid iat tat raises =
+    mkgetter iid iat tat r ext = [gtsig iid iat tat, gimpl iid iat tat r ext]
+    gimpl iid iat tat raises ext =
       let defget = iid ++ "|" ++ getf intf iat
           ffi = foldl H.HsApp (mkVar "{#") [H.HsVar . H.UnQual . H.HsIdent $ "call",
                 H.HsVar . H.UnQual . H.HsIdent $ "webkit_dom_" ++ gtkName (getf intf iat),
@@ -608,7 +609,8 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           call = (H.HsApp ffi . H.HsParen $ H.HsApp
             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
             (H.HsVar . H.UnQual $ H.HsIdent "self"))
-          rhs = H.HsUnGuardedRhs $ returnType tat $ propExcept (I.getterRaises raises) call
+          canRaise = (not $ null (I.getterRaises raises)) || (I.ExtAttr $ I.Id "GetterRaisesException") `elem` ext
+          rhs = H.HsUnGuardedRhs $ returnType tat $ propExcept canRaise call
           match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
       H.HsFunBind [match]
     gtsig iid iat tat =
@@ -733,6 +735,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
     mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") `elem` ext = []
+    mkmeth (I.Operation (I.FunId (I.Getter) _ _) _ _ _ _) = []
     mkmeth op | skip op = []
     mkmeth op = tsig op : timpl op
     tsig op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
@@ -746,7 +749,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet optype))
           retts = H.HsQualType (thisctx : contxt) tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
-    timpl op@(I.Operation (I.FunId _ _ parm) optype raises _ _) =
+    timpl op@(I.Operation (I.FunId _ _ parm) optype raises _ attrib) =
       let defop = getDef intf ++ "|" ++ (U.toLowerInitCamel $ getDef intf) ++ (U.toUpperHead $ getDefHs op)
           ffi = foldl H.HsApp (mkVar "{#") [H.HsVar . H.UnQual . H.HsIdent $ "call",
                 H.HsVar . H.UnQual . H.HsIdent $ "webkit_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op)),
@@ -756,13 +759,14 @@ intf2meth intf@(I.Interface _ _ cldefs) =
             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
             (H.HsVar . H.UnQual $ H.HsIdent "self"))
           -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
-          rhs = H.HsUnGuardedRhs $ returnType optype $ propExcept raises $ L.foldl (flip applyParam) call parm
+          canRaise = (not $ null raises) || (I.ExtAttr $ I.Id "RaisesException") `elem` attrib
+          rhs = H.HsUnGuardedRhs $ returnType optype $ propExcept canRaise $ L.foldl (flip applyParam) call parm
 --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
       in  [H.HsFunBind [match]]
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
-    excludedParam (I.Param _ (I.TyName "EventListener" _) _) = True
-    excludedParam (I.Param _ (I.TyName "MediaQueryListListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
     excludedParam _ = False
 
 intf2meth _ = []
@@ -922,7 +926,7 @@ ctxRet _ = []
 
 tyParm :: I.Param -> (H.HsType, [H.HsAsst])
 
-tyParm (I.Param (I.Id p) ptype [I.Mode In]) =
+tyParm (I.Param opt (I.Id p) ptype [I.Mode In]) =
   case ptype of
     I.TyName c Nothing -> case asIs c of
       Just cc ->  (mkTIdent cc, [])
@@ -937,7 +941,7 @@ tyParm (I.Param (I.Id p) ptype [I.Mode In]) =
     I.TyApply _ (I.TyInteger _) -> (mkTIdent "Int",[])
     t -> error $ "Param type " ++ (show t)
 
-tyParm (I.Param _ _ _) = error "Unsupported parameter attributes"
+tyParm param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
 
 -- Some types pass through as is, other are class names
 
@@ -950,16 +954,16 @@ asIs "Bool"         = Just "Bool"
 asIs "Int"          = Just "Int"
 asIs _              = Nothing
 
-paramName (I.Param (I.Id "data") _ _)  = H.HsIdent "data'"
-paramName (I.Param (I.Id "type") _ _)  = H.HsIdent "type'"
-paramName (I.Param (I.Id "where") _ _) = H.HsIdent "where'"
-paramName (I.Param (I.Id p) _ _) = H.HsIdent p
+paramName (I.Param _ (I.Id "data") _ _)  = H.HsIdent "data'"
+paramName (I.Param _ (I.Id "type") _ _)  = H.HsIdent "type'"
+paramName (I.Param _ (I.Id "where") _ _) = H.HsIdent "where'"
+paramName (I.Param _ (I.Id p) _ _) = H.HsIdent p
 
 -- Apply a parameter to a FFI call
 
 applyParam :: I.Param -> H.HsExp -> H.HsExp
 
-applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) call =
+applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) call =
   let pname =  H.HsVar . H.UnQual $ paramName param in
   case ptype of
     I.TyName "DOMString" Nothing -> H.HsApp (H.HsApp (H.HsApp (mkVar "withUTFString") pname) (mkVar "$"))
@@ -993,7 +997,7 @@ applyParam param@(I.Param (I.Id p) ptype [I.Mode In]) call =
     I.TyApply _ (I.TyInteger _) -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     t -> error $ "Param type " ++ (show t)
 
-applyParam (I.Param _ _ _) _ = error "Unsupported parameter attributes"
+applyParam param@(I.Param _ _ _ _) _ = error $ "Unsupported parameter attributes " ++ show param
 
 returnType :: I.Type -> H.HsExp -> H.HsExp
 returnType (I.TyName "DOMString" Nothing) e = H.HsApp (H.HsApp (H.HsParen e) (mkVar ">>=")) (mkVar "readUTFString")
@@ -1016,8 +1020,8 @@ returnType (I.TyFloat _) e = H.HsApp (H.HsApp (mkVar "realToFrac") (mkVar "<$>")
 returnType (I.TyApply _ (I.TyInteger _)) e = H.HsApp (H.HsApp (mkVar "fromIntegral") (mkVar "<$>")) (H.HsParen e)
 returnType t e = e
 
-propExcept [] e = e
-propExcept _ e = H.HsApp (H.HsApp (mkVar "propagateGError") (mkVar "$"))
+propExcept False e = e
+propExcept True e = H.HsApp (H.HsApp (mkVar "propagateGError") (mkVar "$"))
                                    (H.HsLambda (H.SrcLoc "" 1 1) [H.HsPVar . H.HsIdent $ "errorPtr_"]
                                            $ H.HsApp e (mkVar $ "errorPtr_"))
 
