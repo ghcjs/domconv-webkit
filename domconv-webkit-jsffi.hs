@@ -304,7 +304,9 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                     , "Control.Applicative ((<$>))"
                     ] ++ eventImp iid))
                (H.HsFunBind [] : smdecls) where
-      subexp = map mkEIdent $ nub $ filter (not . isSuffixOf "'") $ map declname smdecls
+      name = typeFor . reverse . takeWhile (/= '.') $ reverse iid
+      subexp = map mkEIdent . nub $ (filter (not . isSuffixOf "'") $ map declname smdecls) ++
+                [name, "Is" ++ name, "castTo" ++ name, "gType" ++ name, "to" ++ name]
       eventImp "GHCJS.DOM.Event" = []
       eventImp "GHCJS.DOM.UIEvent" = []
       eventImp "GHCJS.DOM.MouseEvent" = []

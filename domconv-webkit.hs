@@ -226,7 +226,9 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                     , "System.Glib.GError"
                     ] ++ eventImp iid))
                (H.HsFunBind [] : smdecls) where
-      subexp = map mkEIdent $ nub $ filter (not . isSuffixOf "'") $ map declname smdecls
+      name = typeFor . reverse . takeWhile (/= '.') $ reverse iid
+      subexp = map mkEIdent . nub $ (filter (not . isSuffixOf "'") $ map declname smdecls) ++
+                [name, name ++ "Class", "castTo" ++ name, "gType" ++ name, "to" ++ name]
       eventImp "Graphics.UI.Gtk.WebKit.DOM.Event" = []
       eventImp "Graphics.UI.Gtk.WebKit.DOM.UIEvent" = []
       eventImp "Graphics.UI.Gtk.WebKit.DOM.MouseEvent" = []
@@ -595,7 +597,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           defset = iid ++ "|" ++ setf intf iat
           parm = [I.Param I.Required (I.Id "val") tat [I.Mode In]]
           parms = mkTIdent "self" : (map (fst . tyParm) parm)
-          contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet ityp
+          contxt = (concat $ map (snd . tyParm) parm) ++ ctxRet ityp ++ ctxString (ityp:map paramType parm)
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
@@ -617,7 +619,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
       let ityp = I.TyName iid Nothing
           defget = iid ++ "|" ++ getf intf iat
           parms = [H.HsIdent "self"]
-          contxt = ctxRet ityp
+          contxt = ctxRet ityp ++ ctxString [ityp,tat]
           tpsig = mkTsig (map H.HsTyVar parms)
                          (H.HsTyApp monadtv $ tyRet tat)
           retts = H.HsQualType contxt tpsig in
@@ -642,7 +644,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     eventtsig iid iat =
       let ityp = I.TyName iid Nothing
           defget = iid ++ "|" ++ eventf intf iat
-          contxt = ctxRet ityp
+          contxt = ctxRet ityp ++ ctxString [ityp]
           tpsig = mkTsig [] $ eventTyRet iat
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
@@ -743,7 +745,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           -- exprtv = mkTIdent "Expression"
           defop = getDef intf ++ "|" ++ (U.toLowerInitCamel $ getDef intf) ++ (U.toUpperHead $ getDefHs op)
           parms =  mkTIdent "self" : (map (fst . tyParm) parm)
-          contxt = concat $ map (snd . tyParm) parm
+          contxt = (concat $ map (snd . tyParm) parm) ++ ctxString (optype:map paramType parm)
           -- monadctx = (mkUIdent "Monad",[monadtv])
           thisctx = (mkUIdent (classFor $ getDef intf),[mkTIdent "self"])
           tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet optype))
@@ -922,6 +924,13 @@ ctxRet (I.TyName c Nothing) = case (asIs c) of
 
 ctxRet _ = []
 
+ctxString :: [I.Type] -> [H.HsAsst]
+ctxString types | I.TyName "DOMString" Nothing `elem` types =
+    [(mkUIdent $ "GlibString", [mkTIdent "string"])]
+ctxString _ = []
+
+paramType (I.Param _ _ ptype _) = ptype
+
 -- Obtain a type signature from a parameter definition
 
 tyParm :: I.Param -> (H.HsType, [H.HsAsst])
@@ -947,7 +956,7 @@ tyParm param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ 
 
 asIs :: String -> Maybe String
 
-asIs "DOMString"    = Just "String"
+asIs "DOMString"    = Just "string"
 asIs "DOMTimeStamp" = Just "Word"
 asIs "CompareHow"   = Just "Word"
 asIs "Bool"         = Just "Bool"
