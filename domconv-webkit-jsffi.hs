@@ -97,13 +97,15 @@ makeWebkitBindings idl args = do
     ffiTypes hh prntmap =
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
             let name = typeFor n in
-            "#if (defined(__GHCJS__) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
+            "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
             ++ "newtype " ++ name ++ " = " ++ name ++ " (JSRef " ++ name ++ ")\n\n"
             ++ "un" ++ name ++ " (" ++ name ++ " o) = o\n\n"
             ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["GObjectClass"]) ++ " o => Is" ++ name ++ " o\n"
             ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
             ++ "to" ++ name ++ " = unsafeCastGObject . toGObject\n\n"
 
+--            ++ "instance FromJSRef " ++ name ++ " where\n"
+--            ++ "
             ++ concatMap (\parent -> "instance Is" ++ parent ++ " " ++ name ++ "\n")
                          (name:rights parents)
             ++ "instance GObjectClass " ++ name ++ " where\n"
@@ -113,15 +115,16 @@ makeWebkitBindings idl args = do
             ++ "castTo" ++ name ++ " :: GObjectClass obj => obj -> " ++ name ++ "\n"
             ++ "castTo" ++ name ++ " = castTo gType" ++ name ++ " \"" ++ name ++ "\"\n\n"
 
-            ++ "#ifdef __GHCJS__\n"
+            ++ "#ifdef ghcjs_HOST_OS\n"
             ++ "foreign import javascript unsafe \"window[\\\"" ++ name ++ "\\\"]\" gType" ++ name ++ "' :: JSRef GType\n"
             ++ "#else\n"
             ++ "gType" ++ name ++ "' = error \"gType" ++ name ++ "': only available in JavaScript\"\n"
             ++ "#endif\n"
             ++ "gType" ++ name ++ " = GType gType" ++ name ++ "'\n"
             ++ "#else\n"
-            ++ "type Is" ++ name ++ " o = " ++ name ++ "Class o\n"
+            ++ (if inWebKitGtk name then "type Is" ++ name ++ " o = " ++ name ++ "Class o\n" else "")
             ++ "#endif\n\n"
+    inWebKitGtk = (`notElem` ["BarProp", "DOMNamedFlowCollection", "DOMSecurityPolicy", "DOMWindowCSS", "KeyboardEvent", "StorageInfo"])
 
 processIDL idl args = do
   let epopts = parseOptions ("-DLANGUAGE_GOBJECT=1":args)
@@ -214,7 +217,7 @@ putSplit mod@(H.HsModule _ modid _ _ _) = do
   createDirectoryIfMissing True (concat $ intersperse "/" $ init components)
   Prelude.writeFile ((concat $ intersperse "/" ("src":components)) ++ ".hs") $
         "{-# LANGUAGE CPP #-}\n"
-     ++ "#if (defined(__GHCJS__) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
+     ++ "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
      ++ "{-# LANGUAGE ForeignFunctionInterface, JavaScriptFFI #-}\n"
      ++ prettyJS mod
      ++ "\n#else\n"
@@ -226,17 +229,17 @@ putSplit mod@(H.HsModule _ modid _ _ _) = do
 
 prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
-     : (map prettyPrint imp ++ map prettyDecl decls)
+     : map prettyDecl decls
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = concat [
-        "\n\n#ifdef __GHCJS__"
+        "\n\n#ifdef ghcjs_HOST_OS"
       , prettyPrint d
       , "\n#else"
       , prettyPrint (H.HsTypeSig nullLoc [H.HsIdent defop] (H.HsQualType [] tpsig))
       , "\n"
       , prettyPrint (H.HsMatch nullLoc (H.HsIdent defop) [] (H.HsUnGuardedRhs . H.HsVar . H.UnQual $ H.HsIdent "undefined") [])
       , "\n#endif"]
-    prettyDecl d = prettyPrint d
+    prettyDecl d = prettyPrint d
 
 -- Split a proto-module created by domLoop. All class, data, and instance definitions
 -- remain in the "head" class. All methods are grouped by their `this' argument
@@ -299,6 +302,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                (map (mkModImport . H.Module) ([
                       "GHCJS.Types"
                     , "GHCJS.Foreign"
+                    , "Data.Int"
                     , "Data.Word"
                     , "GHCJS.DOM.Types"
                     , "Control.Applicative ((<$>))"

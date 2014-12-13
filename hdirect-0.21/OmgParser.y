@@ -81,6 +81,7 @@ END_GHC_ONLY
         VOID          { T_void }
         MODE          { T_mode $$ }
         OPTIONAL      { T_optional }
+        UNRESTRICTED  { T_unrestricted }
         LITERAL       { T_literal $$ }
         STRING_LIT    { T_string_lit $$ }
 	ID	      { T_id $$ }
@@ -308,6 +309,7 @@ declarator :: { Id }
 
 floating_pt_type :: { Type }
    : FLOAT			{ TyFloat $1 }
+   | UNRESTRICTED FLOAT         { TyFloat $2 }
 
 integer_type :: { Type }
    : INTEGER			{ TyInteger $1 }

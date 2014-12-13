@@ -99,6 +99,7 @@ data IDLToken
  | T_void
  | T_mode ParamDir
  | T_optional
+ | T_unrestricted
  | T_raises
  | T_context
  | T_getter
@@ -168,6 +169,7 @@ std_idl_keywords =
     , ("float",  	T_float Short)
     , ("in",  	        T_mode In)
     , ("optional",  	T_optional)
+    , ("unrestricted",  T_unrestricted)
     , ("interface",	T_interface)
     , ("implements",	T_implements)
     , ("import",	T_import)
