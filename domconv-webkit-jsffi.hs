@@ -115,11 +115,7 @@ makeWebkitBindings idl args = do
             ++ "castTo" ++ name ++ " :: GObjectClass obj => obj -> " ++ name ++ "\n"
             ++ "castTo" ++ name ++ " = castTo gType" ++ name ++ " \"" ++ name ++ "\"\n\n"
 
-            ++ "#ifdef ghcjs_HOST_OS\n"
             ++ "foreign import javascript unsafe \"window[\\\"" ++ name ++ "\\\"]\" gType" ++ name ++ "' :: JSRef GType\n"
-            ++ "#else\n"
-            ++ "gType" ++ name ++ "' = error \"gType" ++ name ++ "': only available in JavaScript\"\n"
-            ++ "#endif\n"
             ++ "gType" ++ name ++ " = GType gType" ++ name ++ "'\n"
             ++ "#else\n"
             ++ (if inWebKitGtk name then "type Is" ++ name ++ " o = " ++ name ++ "Class o\n" else "")
