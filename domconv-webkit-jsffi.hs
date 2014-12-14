@@ -302,6 +302,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                (map (mkModImport . H.Module) ([
                       "GHCJS.Types"
                     , "GHCJS.Foreign"
+--                    , "GHCJS.Marshal.Pure"
                     , "Data.Int"
                     , "Data.Word"
                     , "GHCJS.DOM.Types"
@@ -837,17 +838,21 @@ intf2meth intf@(I.Interface _ _ cldefs) =
     mkmeth op = jsffi op : tsig op : timpl op
     jsffi op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
       let monadtv = mkTIdent "IO"
-          defop = getDef intf ++ "|" ++ jsffiName op
+          defop = getDef intf ++ "|" ++ jsffiName op parm
           parms = ffiTySelf intf : map (fst . tyParmFFI) parm
           tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet True optype))
           retts = H.HsQualType [] tpsig
-          jsimpl = show . renderJs . jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
-                    (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm) in
+          jsimpl = case parm of
+                    [I.Param _ _ (I.TyName "DOMString..." _) _] ->
+                        show . renderJs . jsReturn optype $ [jmacroE| $1[`(getDef op)`].apply($1, $2) |]
+                    _ ->
+                        show . renderJs . jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
+                            (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm) in
        H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
     tsig op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
       let monadtv = mkTIdent "IO"
           -- exprtv = mkTIdent "Expression"
-          defop = getDef intf ++ "|" ++ (U.toLowerInitCamel $ getDef intf) ++ (U.toUpperHead $ getDefHs op)
+          defop = getDef intf ++ "|" ++ name op parm
           parms =  mkTIdent "self" : (map (fst . tyParm) parm)
           contxt = (ctxSelf (getDef intf) : (concat $ map (snd . tyParm) parm)) ++ ctxRet optype
           -- monadctx = (mkUIdent "Monad",[monadtv])
@@ -855,8 +860,8 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
     timpl op@(I.Operation (I.FunId _ _ parm) optype raises _ _) =
-      let defop = getDef intf ++ "|" ++ (U.toLowerInitCamel $ getDef intf) ++ (U.toUpperHead $ getDefHs op)
-          ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op
+      let defop = getDef intf ++ "|" ++ name op parm
+          ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op parm
           parms = map H.HsPVar (map H.HsIdent ("self" : map paramName parm))
           call = H.HsApp ffi . H.HsParen $
                 H.HsApp
@@ -870,11 +875,19 @@ intf2meth intf@(I.Interface _ _ cldefs) =
 --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
       in  [H.HsFunBind [match]]
-    jsffiName op = "ghcjs_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
+    rawName op = (U.toLowerInitCamel $ getDef intf) ++ (U.toUpperHead $ getDefHs op)
+    name op parm = rawName op ++ disambiguate (rawName op) parm
+--    jsffiName op parm = name op parm ++ "'"
+    jsffiName op parm = "ghcjs_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
+                                     ++ disambiguate (rawName op) parm
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
     excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True
     excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
     excludedParam _ = False
+    disambiguate "domWindowCSSSupports" [_, _] = "2"
+    disambiguate "htmlInputElementSetRangeText" [_, _, _, _] = "4"
+    disambiguate "htmlTextAreaElementSetRangeText" [_, _, _, _] = "4"
+    disambiguate name _ = ""
 
 intf2meth _ = []
 
@@ -1054,6 +1067,8 @@ tyParm' ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) =
   case ptype of
     I.TyName "DOMString" Nothing | ffi -> (mkTIdent "JSString", [])
                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
+    I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSArray JSString", [])
+                                    | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p])])
     I.TyName c Nothing -> case asIs ffi c of
       Just cc ->  (mkTIdent cc, [])
       Nothing | ffi -> (H.HsTyApp (mkTIdent "JSRef") (mkTIdent (typeFor c)), [])
@@ -1099,6 +1114,20 @@ applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) call =
   let pname = mkVar $ paramName param in
   case ptype of
     I.TyName "DOMString" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "toJSString") pname)
+    I.TyName "DOMString..." Nothing -> H.HsApp call (H.HsParen $
+          (H.HsApp
+            (mkVar $ "ptoJSRefListOf")
+            (H.HsParen
+              (H.HsApp
+                (H.HsApp
+                  (mkVar $ "map")
+                  (mkVar $ "toJSString")
+                )
+              pname
+            )
+          )
+        )
+      )
     I.TyName "DOMTimeStamp" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyName "CompareHow" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyName "Bool" Nothing -> H.HsApp call pname
