@@ -302,7 +302,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                (map (mkModImport . H.Module) ([
                       "GHCJS.Types"
                     , "GHCJS.Foreign"
---                    , "GHCJS.Marshal.Pure"
+                    , "GHCJS.Marshal.Pure"
                     , "Data.Int"
                     , "Data.Word"
                     , "GHCJS.DOM.Types"
