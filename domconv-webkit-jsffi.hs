@@ -232,13 +232,7 @@ prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
      : map prettyDecl decls
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = concat [
-        "\n\n#ifdef ghcjs_HOST_OS"
-      , prettyPrint d
-      , "\n#else"
-      , prettyPrint (H.HsTypeSig nullLoc [H.HsIdent defop] (H.HsQualType [] tpsig))
-      , "\n"
-      , prettyPrint (H.HsMatch nullLoc (H.HsIdent defop) [] (H.HsUnGuardedRhs . H.HsVar . H.UnQual $ H.HsIdent "undefined") [])
-      , "\n#endif"]
+        prettyPrint d]
     prettyDecl d = prettyPrint d
 
 -- Split a proto-module created by domLoop. All class, data, and instance definitions
