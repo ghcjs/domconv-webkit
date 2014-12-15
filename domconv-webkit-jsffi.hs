@@ -100,12 +100,17 @@ makeWebkitBindings idl args = do
             "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
             ++ "newtype " ++ name ++ " = " ++ name ++ " (JSRef " ++ name ++ ")\n\n"
             ++ "un" ++ name ++ " (" ++ name ++ " o) = o\n\n"
+
+            ++ "instance ToJSRef " ++ name ++ " where\n"
+            ++ "  toJSRef = return . un" ++ name ++ "\n\n"
+
+            ++ "instance FromJSRef " ++ name ++ " where\n"
+            ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNull\n\n"
+
             ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["GObjectClass"]) ++ " o => Is" ++ name ++ " o\n"
             ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
             ++ "to" ++ name ++ " = unsafeCastGObject . toGObject\n\n"
 
---            ++ "instance FromJSRef " ++ name ++ " where\n"
---            ++ "
             ++ concatMap (\parent -> "instance Is" ++ parent ++ " " ++ name ++ "\n")
                          (name:rights parents)
             ++ "instance GObjectClass " ++ name ++ " where\n"
