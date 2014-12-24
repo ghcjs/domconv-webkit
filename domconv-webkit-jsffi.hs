@@ -102,10 +102,12 @@ makeWebkitBindings idl args = do
             ++ "un" ++ name ++ " (" ++ name ++ " o) = o\n\n"
 
             ++ "instance ToJSRef " ++ name ++ " where\n"
-            ++ "  toJSRef = return . un" ++ name ++ "\n\n"
+            ++ "  toJSRef = return . un" ++ name ++ "\n"
+            ++ "  {-# INLINE toJSRef #-}\n\n"
 
             ++ "instance FromJSRef " ++ name ++ " where\n"
             ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNull\n\n"
+            ++ "  {-# INLINE fromJSRef #-}\n\n"
 
             ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["GObjectClass"]) ++ " o => Is" ++ name ++ " o\n"
             ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
@@ -234,7 +236,7 @@ prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = concat [
         prettyPrint d]
-    prettyDecl d = prettyPrint d
+    prettyDecl d = prettyPrint d
 
 -- Split a proto-module created by domLoop. All class, data, and instance definitions
 -- remain in the "head" class. All methods are grouped by their `this' argument
@@ -297,7 +299,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                (map (mkModImport . H.Module) ([
                       "GHCJS.Types"
                     , "GHCJS.Foreign"
-                    , "GHCJS.Marshal.Pure"
+                    , "GHCJS.Marshal"
                     , "Data.Int"
                     , "Data.Word"
                     , "GHCJS.DOM.Types"
@@ -1062,7 +1064,7 @@ tyParm' ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) =
   case ptype of
     I.TyName "DOMString" Nothing | ffi -> (mkTIdent "JSString", [])
                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
-    I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSArray JSString", [])
+    I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSRef [a]", [])
                                     | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p])])
     I.TyName c Nothing -> case asIs ffi c of
       Just cc ->  (mkTIdent cc, [])
@@ -1109,20 +1111,17 @@ applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) call =
   let pname = mkVar $ paramName param in
   case ptype of
     I.TyName "DOMString" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "toJSString") pname)
-    I.TyName "DOMString..." Nothing -> H.HsApp call (H.HsParen $
+    I.TyName "DOMString..." Nothing ->
+        (H.HsInfixApp
           (H.HsApp
-            (mkVar $ "ptoJSRefListOf")
-            (H.HsParen
-              (H.HsApp
-                (H.HsApp
-                  (mkVar $ "map")
-                  (mkVar $ "toJSString")
-                )
-              pname
-            )
+            (mkVar "toJSRef")
+            (mkVar "tokens")
+          )
+          (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
+          (H.HsLambda nullLoc [H.HsPVar (H.HsIdent $ paramName param ++ "'")]
+            (H.HsApp call (mkVar $ paramName param ++ "'"))
           )
         )
-      )
     I.TyName "DOMTimeStamp" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyName "CompareHow" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyName "Bool" Nothing -> H.HsApp call pname
