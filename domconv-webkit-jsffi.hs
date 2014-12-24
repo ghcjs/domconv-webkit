@@ -106,7 +106,7 @@ makeWebkitBindings idl args = do
             ++ "  {-# INLINE toJSRef #-}\n\n"
 
             ++ "instance FromJSRef " ++ name ++ " where\n"
-            ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNull\n\n"
+            ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNull\n"
             ++ "  {-# INLINE fromJSRef #-}\n\n"
 
             ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["GObjectClass"]) ++ " o => Is" ++ name ++ " o\n"
