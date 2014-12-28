@@ -1065,7 +1065,7 @@ tyParm' ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) =
     I.TyName "DOMString" Nothing | ffi -> (mkTIdent "JSString", [])
                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
     I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSRef [a]", [])
-                                    | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p])])
+                                    | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSRef", [p])])
     I.TyName c Nothing -> case asIs ffi c of
       Just cc ->  (mkTIdent cc, [])
       Nothing | ffi -> (H.HsTyApp (mkTIdent "JSRef") (mkTIdent (typeFor c)), [])
