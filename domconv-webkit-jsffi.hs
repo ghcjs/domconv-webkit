@@ -98,7 +98,7 @@ makeWebkitBindings idl args = do
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
             let name = typeFor n in
             "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
-            ++ "newtype " ++ name ++ " = " ++ name ++ " (JSRef " ++ name ++ ")\n\n"
+            ++ "newtype " ++ name ++ " = " ++ name ++ " (JSRef " ++ name ++ ") deriving (Eq)\n\n"
             ++ "un" ++ name ++ " (" ++ name ++ " o) = o\n\n"
 
             ++ "instance ToJSRef " ++ name ++ " where\n"
