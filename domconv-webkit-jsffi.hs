@@ -127,7 +127,24 @@ makeWebkitBindings idl args = do
             ++ "#else\n"
             ++ (if inWebKitGtk name then "type Is" ++ name ++ " o = " ++ name ++ "Class o\n" else "")
             ++ "#endif\n\n"
-    inWebKitGtk = (`notElem` ["BarProp", "DOMNamedFlowCollection", "DOMSecurityPolicy", "DOMWindowCSS", "KeyboardEvent", "StorageInfo"])
+    inWebKitGtk = (`notElem` ["BarProp", "DOMNamedFlowCollection", "DOMSecurityPolicy", "DOMWindowCSS", "KeyboardEvent", "StorageInfo",
+                     "AbstractView","CSS2Properties","CSSCharsetRule","CSSFontFaceRule",
+                     "CSSImportRule","CSSMediaRule","CSSPageRule","CSSPrimitiveValue",
+                     "CSSStyleRule","CSSUnknownRule","CSSValueList","Counter",
+                     "DOMImplementationCSS","DocumentCSS","DocumentEvent","DocumentRange",
+                     "DocumentStyle","DocumentTraversal","DocumentView","DocumentWindow",
+                     "DocumentationCSS","ElementCSSInlineStyle","EmbeddingElement",
+                     "Entity","EventListener","HTMLAbbrElement","HTMLAcronymElement",
+                     "HTMLAddressElement","HTMLBElement","HTMLBdoElement",
+                     "HTMLBigElement","HTMLCenterElement","HTMLCiteElement",
+                     "HTMLCodeElement","HTMLDdElement","HTMLDfnElement","HTMLDtElement",
+                     "HTMLEmElement","HTMLIElement","HTMLIsIndexElement","HTMLKbdElement",
+                     "HTMLNoframesElement","HTMLNoscriptElement","HTMLSElement",
+                     "HTMLSampElement","HTMLSmallElement","HTMLSpanElement",
+                     "HTMLStrikeElement","HTMLStrongElement","HTMLSubElement",
+                     "HTMLSupElement","HTMLUElement","HTMLVarElement","KeyEvent",
+                     "LinkStyle","MutationEvent","Notation","RGBColor",
+                     "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest"])
 
 processIDL idl args = do
   let epopts = parseOptions ("-DLANGUAGE_GOBJECT=1":args)
@@ -166,26 +183,8 @@ procopts idl opts = do
 
   let getParent (a, (Right b):_) = (b, a)
       getParent (a, _) = ("", a)
-  let unsupported = ["AbstractView","CSS2Properties","CSSCharsetRule","CSSFontFaceRule",
-                     "CSSImportRule","CSSMediaRule","CSSPageRule","CSSPrimitiveValue",
-                     "CSSStyleRule","CSSUnknownRule","CSSValueList","Counter",
-                     "DOMImplementationCSS","DocumentCSS","DocumentEvent","DocumentRange",
-                     "DocumentStyle","DocumentTraversal","DocumentView","DocumentWindow",
-                     "DocumentationCSS","ElementCSSInlineStyle","EmbeddingElement",
-                     "Entity","EventListener","HTMLAbbrElement","HTMLAcronymElement",
-                     "HTMLAddressElement","HTMLBElement","HTMLBdoElement",
-                     "HTMLBigElement","HTMLCenterElement","HTMLCiteElement",
-                     "HTMLCodeElement","HTMLDdElement","HTMLDfnElement","HTMLDtElement",
-                     "HTMLEmElement","HTMLIElement","HTMLIsIndexElement","HTMLKbdElement",
-                     "HTMLNoframesElement","HTMLNoscriptElement","HTMLSElement",
-                     "HTMLSampElement","HTMLSmallElement","HTMLSpanElement",
-                     "HTMLStrikeElement","HTMLStrongElement","HTMLSubElement",
-                     "HTMLSupElement","HTMLUElement","HTMLVarElement","KeyEvent",
-                     "LinkStyle","MutationEvent","Notation","RGBColor",
-                     "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest"]
 
-      filterSupported = filter (not . flip elem unsupported . fst)
-  return . filterSupported $ M.toList prntmap
+  return $ M.toList prntmap
 
 
 -- Retrieve a module name as a string from Module
@@ -225,10 +224,14 @@ putSplit mod@(H.HsModule _ modid _ _ _) = do
      ++ prettyJS mod
      ++ "\n#else\n"
      ++ "module " ++ modName modid ++ " (\n"
-     ++ "  module Graphics.UI.Gtk.WebKit.DOM." ++ head (drop 2 components) ++ "\n"
+     ++ (if inWebKitGtk then "  module Graphics.UI.Gtk.WebKit.DOM." ++ head (drop 2 components) ++ "\n" else "")
      ++ "  ) where\n"
-     ++ "import Graphics.UI.Gtk.WebKit.DOM." ++ head (drop 2 components)
-     ++ "\n#endif\n"
+     ++ (if inWebKitGtk then "import Graphics.UI.Gtk.WebKit.DOM." ++ head (drop 2 components) ++ "\n" else "")
+     ++ "#endif\n"
+  where
+    inWebKitGtk = inWebKitGtk' $ modName modid
+    inWebKitGtk' "GHCJS.DOM.XMLHttpRequest" = False
+    inWebKitGtk' _ = True
 
 prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
