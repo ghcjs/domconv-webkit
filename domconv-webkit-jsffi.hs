@@ -144,7 +144,7 @@ makeWebkitBindings idl args = do
                      "HTMLStrikeElement","HTMLStrongElement","HTMLSubElement",
                      "HTMLSupElement","HTMLUElement","HTMLVarElement","KeyEvent",
                      "LinkStyle","MutationEvent","Notation","RGBColor",
-                     "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest"])
+                     "Rect","TimerListener","ViewCSS","Window","XMLHttpRequest","XMLHttpRequestUpload"])
 
 processIDL idl args = do
   let epopts = parseOptions ("-DLANGUAGE_GOBJECT=1":args)
@@ -231,6 +231,7 @@ putSplit mod@(H.HsModule _ modid _ _ _) = do
   where
     inWebKitGtk = inWebKitGtk' $ modName modid
     inWebKitGtk' "GHCJS.DOM.XMLHttpRequest" = False
+    inWebKitGtk' "GHCJS.DOM.XMLHttpRequestUpload" = False
     inWebKitGtk' _ = True
 
 prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
@@ -974,6 +975,8 @@ tyRet :: Bool -> I.Type -> H.HsType
 
 tyRet ffi (I.TyName "DOMString" Nothing) | ffi = mkTIdent "JSString"
                                          | otherwise = mkTIdent "result"
+tyRet ffi (I.TyName "XMLHttpRequestResponseType" Nothing) | ffi = mkTIdent "JSString"
+                                                          | otherwise = mkTIdent "result"
 tyRet ffi (I.TyName c Nothing) = case (asIs ffi c) of
   Nothing | ffi -> H.HsTyApp (mkTIdent "JSRef") (mkTIdent $ typeFor c)
   Nothing -> H.HsTyApp (mkTIdent "Maybe") (mkTIdent $ typeFor c)
@@ -1049,6 +1052,7 @@ ffiTySelf intf = H.HsTyApp (mkTIdent "JSRef") (mkTIdent (typeFor $ getDef intf))
 ctxRet :: I.Type -> [H.HsAsst]
 
 ctxRet (I.TyName "DOMString" Nothing) = [(mkUIdent "FromJSString", [mkTIdent "result"])]
+ctxRet (I.TyName "XMLHttpRequestResponseType" Nothing) = [(mkUIdent "FromJSString", [mkTIdent "result"])]
 --ctxRet (I.TyName c Nothing) = case (asIs False c) of
 --  Nothing -> [(mkUIdent $ classFor c, [mkTIdent "self"])]
 --  Just c' -> []
@@ -1067,6 +1071,8 @@ tyParm' ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) =
   case ptype of
     I.TyName "DOMString" Nothing | ffi -> (mkTIdent "JSString", [])
                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
+    I.TyName "XMLHttpRequestResponseType" Nothing | ffi -> (mkTIdent "JSString", [])
+                                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
     I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSRef [a]", [])
                                     | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSRef", [p])])
     I.TyName c Nothing -> case asIs ffi c of
@@ -1094,6 +1100,7 @@ asIs :: Bool -- ^ Is JSFFI call
     -> String -> Maybe String
 
 asIs _ "DOMString"    = Just "String"
+asIs _ "XMLHttpRequestResponseType" = Just "String"
 asIs _ "DOMTimeStamp" = Just "Word"
 asIs _ "CompareHow"   = Just "Word"
 -- asIs True "Bool"      = Just "JSBool"
@@ -1114,6 +1121,7 @@ applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) call =
   let pname = mkVar $ paramName param in
   case ptype of
     I.TyName "DOMString" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "toJSString") pname)
+    I.TyName "XMLHttpRequestResponseType" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "toJSString") pname)
     I.TyName "DOMString..." Nothing ->
         (H.HsInfixApp
           (H.HsApp
@@ -1162,6 +1170,7 @@ applyParam param@(I.Param _ _ _ _) _ = error $ "Unsupported parameter attributes
 
 returnType :: I.Type -> H.HsExp -> H.HsExp
 returnType (I.TyName "DOMString" Nothing) e = H.HsApp (H.HsApp (mkVar "fromJSString") (mkVar "<$>")) (H.HsParen e)
+returnType (I.TyName "XMLHttpRequestResponseType" Nothing) e = H.HsApp (H.HsApp (mkVar "fromJSString") (mkVar "<$>")) (H.HsParen e)
 returnType (I.TyName "DOMTimeStamp" Nothing) e = H.HsApp (H.HsApp (mkVar "fromIntegral") (mkVar "<$>")) (H.HsParen e)
 returnType (I.TyName "CompareHow" Nothing) e = H.HsApp (H.HsApp (mkVar "fromIntegral") (mkVar "<$>")) (H.HsParen e)
 returnType (I.TyName "Bool" Nothing) e = e
