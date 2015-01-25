@@ -639,14 +639,14 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     mkattr (I.Attribute [] _ _ _ _) = []
     mkattr (I.Attribute _ _ (I.TyName "MediaQueryListListener" _) _ _) = []
     mkattr (I.Attribute _ _ (I.TyName "Crypto" _) _ _) = []
-    mkattr (I.Attribute [I.Id "type"] _ _ _ _) = []
+    mkattr (I.Attribute [I.Id "type"] _ _ _ _) = [] -- Use GType instead
     mkattr (I.Attribute [I.Id "URL"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "location"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "valueAsDate"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "webkitPeerConnection"] _ _ _ _) = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") `elem` ext = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") `elem` ext = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") `elem` ext = []
+--    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") `elem` ext = []
+--    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") `elem` ext = []
+--    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") `elem` ext = []
     mkattr (I.Attribute [I.Id iat] _ (I.TyName "EventListener" _) _ _) = mkevent iid iat
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
       (if I.ExtAttr (I.Id "Replaceable") `elem` ext
@@ -832,7 +832,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
     mkmeth op | getDef op `elem` ["getCSSCanvasContext", "getSVGDocument"] = []
-    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") `elem` ext = []
+--    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") `elem` ext = []
     mkmeth op | skip op = []
@@ -882,7 +882,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
     jsffiName op parm = "ghcjs_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
                                      ++ disambiguate (rawName op) parm
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
-    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True -- We use event attribute info instead of addEventListenet and removeEventListner
     excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
     excludedParam _ = False
     disambiguate "domWindowCSSSupports" [_, _] = "2"
@@ -993,7 +993,8 @@ tyRet _ (I.TyApply (I.TySigned False) (I.TyInteger _)) = mkTIdent "Word"
 tyRet ffi (I.TyApply _ (I.TyInteger LongLong)) | ffi = mkTIdent "Double"
                                                | otherwise = mkTIdent "Int64"
 tyRet _ (I.TyApply _ (I.TyInteger _)) = mkTIdent "Int"
-tyRet _ (I.TyObject) = mkTIdent "GObject"
+tyRet _ (I.TyObject) = H.HsTyApp (mkTIdent "JSRef") (mkTIdent "GObject")
+tyRet _ (I.TyAny) = mkTIdent "(JSRef a)"
 tyRet _ t = error $ "Return type " ++ (show t)
 
 eventType "onclick"       = "MouseEvent"
@@ -1090,6 +1091,7 @@ tyParm' ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) =
     I.TyApply _ (I.TyInteger LongLong) | ffi -> (mkTIdent "Double",[])
                                        | otherwise -> (mkTIdent "Int64",[])
     I.TyApply _ (I.TyInteger _) -> (mkTIdent "Int",[])
+    I.TyAny -> (mkTIdent "JSRef a",[])
     t -> error $ "Param type " ++ (show t)
 
 tyParm' _ param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
@@ -1164,7 +1166,8 @@ applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) call =
     I.TyFloat _   -> H.HsApp call pname
     I.TyApply _ (I.TyInteger LongLong) -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyApply _ (I.TyInteger _) -> H.HsApp call pname
-    t -> error $ "Param type " ++ (show t)
+    I.TyAny -> H.HsApp call pname
+    t -> error $ "Apply Param type " ++ (show t)
 
 applyParam param@(I.Param _ _ _ _) _ = error $ "Unsupported parameter attributes " ++ show param
 
