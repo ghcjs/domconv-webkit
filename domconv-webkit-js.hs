@@ -178,7 +178,7 @@ mkParentMap defns = m2 where
   getintfs _ = []
   m1 = M.fromList $ zip (map getDef allintfs) allintfs
   m2 = M.fromList (map getparents allintfs)
-  getparents i@(I.Interface _ supers _) = (getDef i, concat $ map parent supers)
+  getparents i@(I.Interface _ supers _ _ _) = (getDef i, concat $ map parent supers)
   parent pidf = case (pidf `M.member` m1) of
     True  -> (Right pidf) : snd (getparents (fromJust $ M.lookup pidf m1))
     False -> [Left pidf]
@@ -236,7 +236,7 @@ mod2mod _ z = error $ "Input of mod2mod should be a Module but is " ++ show z
 -- For each interface found, define a newtype with the same name
 
 intf2type :: I.Defn -> [JStat]
-intf2type intf@(I.Interface _ _ _) = [[jmacro| `(jsv functionName)` = \ -> h$g_get_type(`(jsv typeName)`) |]]
+intf2type intf@(I.Interface _ _ _ _ _) = [[jmacro| `(jsv functionName)` = \ -> h$g_get_type(`(jsv typeName)`) |]]
   where
     functionName = "h$webkit_dom_" ++ gtkName (getDef intf) ++ "_get_type"
     typeName = jsType $ getDef intf
@@ -261,7 +261,7 @@ attrOnly _ = False
 -- A filter to select only interfaces (classes)
 
 intfOnly :: I.Defn -> Bool
-intfOnly (I.Interface _ _ cldefs) = True
+intfOnly (I.Interface _ _ cldefs _ _) = True
 intfOnly _ = False
 
 -- A filter to select only constant definitions
@@ -274,7 +274,7 @@ constOnly _ = False
 
 collectOps :: I.Defn -> [I.Defn]
 
-collectOps (I.Interface _ _ cldefs) =
+collectOps (I.Interface _ _ cldefs _ _) =
   filter opsOnly cldefs
 
 collectOps _ = []
@@ -283,7 +283,7 @@ collectOps _ = []
 
 collectConst :: I.Defn -> [I.Defn]
 
-collectConst (I.Interface _ _ cldefs) =
+collectConst (I.Interface _ _ cldefs _ _) =
   filter constOnly cldefs
 
 collectConst _ = []
@@ -292,7 +292,7 @@ collectConst _ = []
 
 collectAttrs :: I.Defn -> [I.Defn]
 
-collectAttrs (I.Interface _ _ cldefs) =
+collectAttrs (I.Interface _ _ cldefs _ _) =
   filter attrOnly cldefs
 
 collectAttrs _ = []
@@ -306,7 +306,7 @@ collectAttrs _ = []
 
 intf2attr :: I.Defn -> [JStat]
 
-intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
+intf2attr intf@(I.Interface (I.Id iid) _ cldefs _ _) =
     concat $ map mkattr $ collectAttrs intf
   where
     mkattr (I.Attribute [] _ _ _ _) = []
@@ -317,11 +317,11 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     mkattr (I.Attribute [I.Id "location"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "valueAsDate"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "webkitPeerConnection"] _ _ _ _) = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") `elem` ext = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") `elem` ext = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") `elem` ext = []
+    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") [] `elem` ext = []
+    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") [] `elem` ext = []
+    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") [] `elem` ext = []
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
-      (if I.ExtAttr (I.Id "Replaceable") `elem` ext
+      (if I.ExtAttr (I.Id "Replaceable") [] `elem` ext
         then []
         else mksetter iid iat tat raises)
       ++ mkgetter iid iat tat raises
@@ -354,7 +354,7 @@ intf2attr _ = []
 
 intf2meth :: I.Defn -> [JStat]
 
-intf2meth intf@(I.Interface _ _ cldefs) =
+intf2meth intf@(I.Interface _ _ cldefs _ _) =
   (concat $ map mkmeth $ collectOps intf) ++
   (concat $ map mkconst $ collectConst intf) where
     getDefHs op = getDef op
@@ -364,9 +364,9 @@ intf2meth intf@(I.Interface _ _ cldefs) =
       Just (s:_) -> s
     mkconst cn@(I.Constant (I.Id cid) _ _ (I.Lit (IntegerLit (ILit base val)))) = []
     mkmeth op | getDef op `elem` ["getCSSCanvasContext", "getSVGDocument"] = []
-    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") `elem` ext = []
-    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") `elem` ext = []
-    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") [] `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") [] `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") [] `elem` ext = []
     mkmeth op | skip op = []
     mkmeth op = [timpl op]
     timpl op@(I.Operation (I.FunId _ _ parm) optype raises _ _) =

@@ -93,7 +93,8 @@ END_GHC_ONLY
 	SEQUENCE      { T_sequence  }
 	OBJECT        { T_object }
 	ANY           { T_any }
-        OCTET         { T_octet }
+        BYTE          { T_int $$ }
+        OCTET         { T_uint $$ }
 	ONEWAY	      { T_oneway }
 	STATIC	      { T_static }
 	FIXED	      { T_fixed }
@@ -139,10 +140,12 @@ interface :: { Defn }
    | opt_extended_attributes INTERFACE identifier   { Forward $3 }
 
 interface_decl :: { Defn }
-   : interface_header '{' exports '}'  { let (ids,inherit) = $1 in Interface ids inherit (reverse $3) }
+   : interface_header '{' exports '}'  { let (at, ty,ids,inherit) = $1 in Interface ids inherit (reverse $3) at ty }
 
-interface_header :: { (Id, Inherit) }
-   : opt_extended_attributes INTERFACE identifier opt_inheritance_spec { ($3,$4) }
+interface_header :: { ([ExtAttribute], Maybe Id, Id, Inherit) }
+   : opt_extended_attributes INTERFACE identifier opt_inheritance_spec { ($1,Nothing,$3,$4) }
+   | opt_extended_attributes identifier INTERFACE identifier opt_inheritance_spec { ($1,Just $2,$4,$5) }
+   | identifier INTERFACE identifier opt_inheritance_spec { ([],Nothing,$3,$4) }
 
 implements :: { Defn }
    : identifier IMPLEMENTS identifier   { Implements $1 $3 }
@@ -178,6 +181,7 @@ more_scoped_names :: { Inherit }
 
 const_decl :: { Defn }
    : CONST opt_extended_attributes const_type identifier '=' const_expr  { Constant $4 [] $3 $6 }
+   | opt_extended_attributes CONST const_type identifier '=' const_expr  { Constant $4 [] $3 $6 }
 
 const_type :: { Type }
    : integer_type		{ $1 }
@@ -266,7 +270,6 @@ base_type_spec :: { Type }
    | char_type				{ $1 }
    | wide_char_type			{ $1 }
    | boolean_type			{ $1 }
-   | octet_type				{ $1 }
    | any_type				{ $1 }
    | object_type			{ $1 }
 
@@ -288,14 +291,14 @@ simple_declarator ::  { Id }
    : identifier				{ $1 }
 
 extended_attribute ::  { ExtAttribute }
-   : identifier                         { ExtAttr $1 }
-   | identifier '=' identifier          { ExtAttr $1 }
-   | identifier '=' DEFAULT             { ExtAttr $1 }
-   | identifier '=' const_type          { ExtAttr $1 }
-   | identifier '=' const_expr          { ExtAttr $1 }
-   | identifier '=' literal             { ExtAttr $1 }
-   | identifier '=' identifier parameter_decls { ExtAttr $1 }
-   | identifier parameter_decls { ExtAttr $1 }
+   : identifier                         { ExtAttr $1 [] }
+   | identifier '=' identifier          { ExtAttr $1 [] }
+   | identifier '=' DEFAULT             { ExtAttr $1 [] }
+   | identifier '=' const_type          { ExtAttr $1 [] }
+   | identifier '=' const_expr          { ExtAttr $1 [] }
+   | identifier '=' literal             { ExtAttr $1 [] }
+   | identifier '=' identifier parameter_decls { ExtAttr $1 $4 }
+   | identifier parameter_decls { ExtAttr $1 $2 }
 
 extended_attributes :: { [ExtAttribute] }
    : extended_attribute                         { [$1] }
@@ -318,6 +321,8 @@ integer_type :: { Type }
    | SIGNED INTEGER INTEGER	{ TyApply (TySigned True)  (TyInteger LongLong) }
    | UNSIGNED INTEGER		{ TyApply (TySigned False) (TyInteger $2) }
    | UNSIGNED INTEGER INTEGER	{ TyApply (TySigned False) (TyInteger LongLong) }
+   | BYTE	                { TyApply (TySigned True)  (TyInteger Byte) }
+   | OCTET	                { TyApply (TySigned False) (TyInteger Byte) }
 
 char_type :: { Type }
    : CHAR	{ TyChar }
@@ -328,9 +333,6 @@ wide_char_type :: { Type }
 
 boolean_type :: { Type }
    : BOOLEAN	{ TyBool }
-
-octet_type   :: { Type }
-   : OCTET      { TyOctet }
 
 any_type     :: { Type }
    : ANY	{ TyAny }
@@ -380,9 +382,13 @@ element_spec :: { SwitchArm }
 enum_type :: { Type }
    : ENUM identifier '{' enumerators '}' { TyEnum (Just $2) (reverse $4) }
 
-enumerators :: { [(Id,[Attribute],Maybe Expr)] }
-   : identifier				{ [($1,[],Nothing)] }
-   | enumerators ',' identifier		{ (($3,[],Nothing):$1) }
+enumerators :: { [(Either Id String,[Attribute],Maybe Expr)] }
+   : enumItem				{ [$1] }
+   | enumerators ',' enumItem		{ $3:$1 }
+
+enumItem :: { (Either Id String,[Attribute],Maybe Expr) }
+   : identifier { (Left $1,[],Nothing) }
+   | STRING_LIT { (Right $1,[],Nothing) }
 
 sequence_type :: { Type }
    : SEQUENCE '<' simple_type_spec ',' positive_int_const '>' { TySequence $3 (Just $5) }
@@ -417,15 +423,7 @@ simple_declarators :: { [Id] }
    | simple_declarators ',' simple_declarator { $3:$1 }
 
 except_decl :: { Defn }
-   : EXCEPTION identifier '{' mb_members '}' { Exception $2 $4 }
-
-mb_members :: { [Member] }
-   : {-empty-}			{ [] }
-   | members			{ $1 }
-
-members :: { [Member] }
-   : member			{ [$1] }
-   | members member		{ $2:$1 }
+   : opt_extended_attributes EXCEPTION identifier '{' exports '}' { Exception $3 $5 }
 
 op_decl :: { Defn }
    : opt_extended_attributes opt_op_attribute op_type_spec identifier parameter_decls raises_exprs mb_context_expr
@@ -488,6 +486,7 @@ param_type_spec :: { Type }
    | template_type_spec			{ $1 }
    | scoped_name		{ TyName $1 Nothing }
    | param_type_spec '[' ']'	{ TySafeArray $1 }
+   | param_type_spec '?'	{ TyOptional $1 }
 
 fixed_pt_type	:: { Type }
    : FIXED '<' positive_int_const ',' integer_literal '>' { TyFixed (Just ($3,$5)) }
@@ -503,6 +502,9 @@ string_literal  :: { String }
 
 identifier :: { Id }
     : ID   { (Id $1) }
+    | DEFAULT { (Id "default") }
+    | OPTIONAL { (Id "optional") }
+    | CONTEXT { (Id "context") }
     
 {------------------ END OF GRAMMAR --------------}
 

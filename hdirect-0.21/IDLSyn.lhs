@@ -29,8 +29,8 @@ data Defn
  | Attributed [Attribute] Defn
  | Attribute  [Id] Bool Type [Raises] [ExtAttribute]
  | Operation  Id Type {-[Param]-} [Raises] (Maybe Context) [ExtAttribute]
- | Exception  Id [Member]
- | Interface  Id Inherit [Defn]
+ | Exception  Id [Defn]
+ | Interface  Id Inherit [Defn] [ExtAttribute] (Maybe Id)
  | Implements Id Id
  | Forward    Id
    -- MS specific declaration groups:
@@ -89,7 +89,6 @@ data Type
  | TySigned  Bool
  | TyWChar
  | TyBool   
- | TyOctet
  | TyAny    
  | TyObject
  | TyStruct (Maybe Id) [Member] (Maybe Int)
@@ -100,7 +99,7 @@ data Type
  | TyName String (Maybe Type)
  | TyIface Name
  | TyUnion (Maybe Id) Type Id (Maybe Id) [Switch] -- encapsulated union.
- | TyEnum (Maybe Id) [(Id, [Attribute], Maybe Expr)]
+ | TyEnum (Maybe Id) [(Either Id String, [Attribute], Maybe Expr)]
    -- MS specific types:
  | TyUnionNon (Maybe Id) [Switch] -- non-encapsulated union.
  | TyCUnion (Maybe Id) [Member]
@@ -109,6 +108,7 @@ data Type
  | TyPointer Type
  | TyArray Type [Expr]
  | TySafeArray Type
+ | TyOptional Type
  | TyFun (Maybe CallConv) Type [Param]
  | TyVoid
  | TyQualifier Qualifier
@@ -158,7 +158,7 @@ data AttrParam
    deriving ( Eq, Show )
 
 data ExtAttribute
-  = ExtAttr Id
+  = ExtAttr Id [Param]
    deriving ( Eq, Show )
 
 data Switch    = Switch [CaseLabel] (Maybe SwitchArm) 

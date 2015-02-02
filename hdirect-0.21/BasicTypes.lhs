@@ -106,7 +106,7 @@ type Inherit = [Name]
 type GUID = [String]
 
 data Size 
- = Short | Natural | Long | LongLong
+ = Byte | Short | Natural | Long | LongLong
    deriving (
               Show -- for Lex debugging only
 	    , Eq

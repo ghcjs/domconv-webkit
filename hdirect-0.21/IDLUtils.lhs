@@ -34,7 +34,7 @@ getDef d =
    Attributed _ d1          -> getDef d1
    ExternDecl _ [i]         -> iName i
    Operation i _ _ _ _      -> iName i
-   Interface (Id i) _ _     -> i
+   Interface (Id i) _ _ _ _ -> i
    Module (Id i) _          -> i
    DispInterface (Id i) _ _ -> i
    CoClass (Id i) _         -> i
@@ -49,7 +49,7 @@ getUses d =
     Constant _ _ ty _     -> getTyUses ty  -- expressions will never,
                                            -- ever have free variables (in fact, const is a foreign co
                                            -- to typelibs.)
-    Interface _ is ds     -> is ++ concatMap getUses ds
+    Interface _ is ds _ _ -> is ++ concatMap getUses ds
     Module _ ds           -> concatMap getUses ds
     DispInterface _ ps ds -> concatMap (\ (_,t, _) -> getTyUses t) ps ++ concatMap getUses ds
     CoClass _ cs          -> map (\ (_,Id i,_) -> i) cs

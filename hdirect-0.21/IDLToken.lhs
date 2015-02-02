@@ -79,7 +79,6 @@ data IDLToken
  | T_char
  | T_wchar
  | T_boolean
- | T_octet
  | T_any
  | T_object
  | T_struct
@@ -191,7 +190,8 @@ std_idl_keywords =
     , ("FALSE",         T_literal (BooleanLit False))
     , ("TRUE",          T_literal (BooleanLit True))
     , ("NULL",		T_literal NullLit)
-    , ("byte",		T_type "octet")
+    , ("byte",		T_int Byte)
+    , ("octet",		T_uint Byte)
     , ("stablePtr",	T_idl_type TyStable)
     , ("extern",	T_extern)
           -- FIXME: normalise callconv naming with cpp
@@ -211,8 +211,7 @@ dce_keywords = std_idl_keywords ++ dce_idl_keywords
 
 dce_idl_keywords :: [(String, IDLToken)]
 dce_idl_keywords =
- [ ("byte",		T_type "octet")
- , ("error_status_t",   T_type "error_status_t")
+ [ ("error_status_t",   T_type "error_status_t")
  , ("small",		T_int Short)
  ] 
 
@@ -232,7 +231,7 @@ ms_idl_keywords =
       , ("BSTR",	   T_type "BSTR")
       , ("SAFEARRAY",      T_safearray)
       , ("hyper",	   T_int LongLong)
-      , ("__int8",	   T_octet)
+      , ("__int8",	   T_int Byte)
       , ("__int16",	   T_int Short)
       , ("__int32",	   T_int Long)
       , ("__int64",	   T_int LongLong)
@@ -268,7 +267,6 @@ omg_idl_keywords =
   , ("fixed",  	   T_fixed)
   , ("inout",      T_mode InOut)
   , ("Object",     T_object)
-  , ("octet",      T_octet)
   , ("oneway",     T_oneway)
   , ("raises",     T_raises)
   , ("getter",     T_getter)

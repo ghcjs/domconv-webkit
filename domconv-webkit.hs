@@ -300,7 +300,7 @@ mkParentMap defns = m2 where
   getintfs _ = []
   m1 = M.fromList $ zip (map getDef allintfs) allintfs
   m2 = M.fromList (map getparents allintfs)
-  getparents i@(I.Interface _ supers _) = (getDef i, concat $ map parent supers)
+  getparents i@(I.Interface _ supers _ _ _) = (getDef i, concat $ map parent supers)
   parent pidf = case (pidf `M.member` m1) of
     True  -> (Right pidf) : snd (getparents (fromJust $ M.lookup pidf m1))
     False -> [Left pidf]
@@ -383,7 +383,7 @@ mkModImport s = H.HsImportDecl {H.importLoc = nullLoc
 
 intf2inst :: M.Map String [Either String String] -> I.Defn -> [H.HsDecl]
 
-intf2inst pm intf@(I.Interface _ _ _) = self : parents where
+intf2inst pm intf@(I.Interface _ _ _ _ _) = self : parents where
   sid = getDef intf
   self = mkInstDecl sid sid
   parents = case M.lookup sid pm of
@@ -397,7 +397,7 @@ intf2inst _ _ = []
 intf2type :: I.Defn -> [H.HsDecl]
 
 
-intf2type intf@(I.Interface _ _ _) =
+intf2type intf@(I.Interface _ _ _ _ _) =
   let typename = H.HsIdent (typeFor $ getDef intf) in
   [H.HsDataDecl nullLoc [] typename []
     [H.HsConDecl nullLoc typename []] []]
@@ -408,7 +408,7 @@ intf2type _ = []
 
 intf2class :: I.Defn -> [H.HsDecl]
 
-intf2class intf@(I.Interface _ supers _) =
+intf2class intf@(I.Interface _ supers _ _ _) =
   [H.HsClassDecl nullLoc sups (H.HsIdent (classFor $ getDef intf)) (take 1 azHIList) []] where
     sups = map name2ctxt supers
 
@@ -439,7 +439,7 @@ attrOnly _ = False
 -- A filter to select only interfaces (classes)
 
 intfOnly :: I.Defn -> Bool
-intfOnly (I.Interface _ _ cldefs) = True
+intfOnly (I.Interface _ _ cldefs _ _) = True
 intfOnly _ = False
 
 -- A filter to select only constant definitions
@@ -452,7 +452,7 @@ constOnly _ = False
 
 collectOps :: I.Defn -> [I.Defn]
 
-collectOps (I.Interface _ _ cldefs) =
+collectOps (I.Interface _ _ cldefs _ _) =
   filter opsOnly cldefs
 
 collectOps _ = []
@@ -461,7 +461,7 @@ collectOps _ = []
 
 collectConst :: I.Defn -> [I.Defn]
 
-collectConst (I.Interface _ _ cldefs) =
+collectConst (I.Interface _ _ cldefs _ _) =
   filter constOnly cldefs
 
 collectConst _ = []
@@ -470,7 +470,7 @@ collectConst _ = []
 
 collectAttrs :: I.Defn -> [I.Defn]
 
-collectAttrs (I.Interface _ _ cldefs) =
+collectAttrs (I.Interface _ _ cldefs _ _) =
   filter attrOnly cldefs
 
 collectAttrs _ = []
@@ -550,7 +550,7 @@ tagFor _ = ""
 
 intf2attr :: I.Defn -> [H.HsDecl]
 
-intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
+intf2attr intf@(I.Interface (I.Id iid) _ cldefs _ _) =
   concat $ map mkattr $ collectAttrs intf where
     mkattr (I.Attribute [] _ _ _ _) = []
     mkattr (I.Attribute _ _ (I.TyName "MediaQueryListListener" _) _ _) = []
@@ -560,12 +560,12 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
     mkattr (I.Attribute [I.Id "location"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "valueAsDate"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "webkitPeerConnection"] _ _ _ _) = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") `elem` ext = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") `elem` ext = []
-    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") `elem` ext = []
+    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") [] `elem` ext = []
+    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") [] `elem` ext = []
+    mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") [] `elem` ext = []
     mkattr (I.Attribute [I.Id iat] _ (I.TyName "EventListener" _) _ _) = mkevent iid iat
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
-      (if I.ExtAttr (I.Id "Replaceable") `elem` ext
+      (if I.ExtAttr (I.Id "Replaceable") [] `elem` ext
         then []
         else mksetter iid iat tat raises ext)
       ++ mkgetter iid iat tat raises ext
@@ -588,7 +588,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
             (H.HsVar . H.UnQual $ H.HsIdent "self"))
           val = I.Param I.Required (I.Id "val") tat [I.Mode In]
-          canRaise = (not $ null (I.setterRaises raises)) || (I.ExtAttr $ I.Id "SetterRaisesException") `elem` ext
+          canRaise = (not $ null (I.setterRaises raises)) || (I.ExtAttr (I.Id "SetterRaisesException") []) `elem` ext
           rhs = H.HsUnGuardedRhs $ propExcept canRaise $ applyParam val call
           match = H.HsMatch nullLoc (H.HsIdent defset) parms rhs [] in
       H.HsFunBind [match]
@@ -611,7 +611,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs) =
           call = (H.HsApp ffi . H.HsParen $ H.HsApp
             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
             (H.HsVar . H.UnQual $ H.HsIdent "self"))
-          canRaise = (not $ null (I.getterRaises raises)) || (I.ExtAttr $ I.Id "GetterRaisesException") `elem` ext
+          canRaise = (not $ null (I.getterRaises raises)) || (I.ExtAttr (I.Id "GetterRaisesException") []) `elem` ext
           rhs = H.HsUnGuardedRhs $ returnType tat $ propExcept canRaise call
           match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
       H.HsFunBind [match]
@@ -720,7 +720,7 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
 
 intf2meth :: I.Defn -> [H.HsDecl]
 
-intf2meth intf@(I.Interface _ _ cldefs) =
+intf2meth intf@(I.Interface _ _ cldefs _ _) =
   (concat $ map mkmeth $ collectOps intf) ++
   (concat $ map mkconst $ collectConst intf) where
     getDefHs op = getDef op
@@ -734,9 +734,9 @@ intf2meth intf@(I.Interface _ _ cldefs) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
     mkmeth op | getDef op `elem` ["getCSSCanvasContext", "getSVGDocument"] = []
-    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") `elem` ext = []
-    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") `elem` ext = []
-    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") [] `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") [] `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") [] `elem` ext = []
     mkmeth (I.Operation (I.FunId (I.Getter) _ _) _ _ _ _) = []
     mkmeth op | skip op = []
     mkmeth op = tsig op : timpl op
@@ -761,7 +761,7 @@ intf2meth intf@(I.Interface _ _ cldefs) =
             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
             (H.HsVar . H.UnQual $ H.HsIdent "self"))
           -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
-          canRaise = (not $ null raises) || (I.ExtAttr $ I.Id "RaisesException") `elem` attrib
+          canRaise = (not $ null raises) || (I.ExtAttr (I.Id "RaisesException") []) `elem` attrib
           rhs = H.HsUnGuardedRhs $ returnType optype $ propExcept canRaise $ L.foldl (flip applyParam) call parm
 --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
