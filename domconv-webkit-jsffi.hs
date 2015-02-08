@@ -59,12 +59,15 @@ jsname "MediaKeySession" = "WebKitMediaKeySession"
 jsname "MediaKeys" = "WebKitMediaKeys"
 jsname "MediaStream" = "webkitMediaStream"
 jsname "RTCPeerConnection" = "webkitRTCPeerConnection"
-jsname "AudioContext" = "webkitAudioContext"
-jsname "OfflineAudioContext" = "webkitOfflineAudioContext"
+--jsname "AudioContext" = "webkitAudioContext"
+--jsname "OfflineAudioContext" = "webkitOfflineAudioContext"
 jsname "PannerNode" = "webkitAudioPannerNode"
 jsname "DOMPath" = "Path2D"
 jsname "DataCue" = "WebKitDataCue"
 jsname x = x
+
+callNew "AudioContext" = [jmacroE| new (window["AudioContext"] || window["webkitAudioContext"]) |]
+callNew x = [jmacroE| new window[`(jsname x)`] |]
 
 main = do
   putStrLn "domconv-webkit : Makes Gtk2Hs Haskell bindings for webkitgtk"
@@ -147,20 +150,20 @@ makeWebkitBindings idl args = do
             ++ "  {-# INLINE toJSRef #-}\n\n"
 
             ++ "instance FromJSRef " ++ name ++ " where\n"
-            ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNull\n"
+            ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNullOrUndefined\n"
             ++ "  {-# INLINE fromJSRef #-}\n\n"
 
-            ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["GObjectClass"]) ++ " o => Is" ++ name ++ " o\n"
+            ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["IsGObject"]) ++ " o => Is" ++ name ++ " o\n"
             ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
             ++ "to" ++ name ++ " = unsafeCastGObject . toGObject\n\n"
 
             ++ concatMap (\parent -> "instance Is" ++ parent ++ " " ++ name ++ "\n")
                          (name:rights parents)
-            ++ "instance GObjectClass " ++ name ++ " where\n"
+            ++ "instance IsGObject " ++ name ++ " where\n"
             ++ "  toGObject = GObject . castRef . un" ++ name ++ "\n"
             ++ "  unsafeCastGObject = " ++ name ++ " . castRef . unGObject\n\n"
 
-            ++ "castTo" ++ name ++ " :: GObjectClass obj => obj -> " ++ name ++ "\n"
+            ++ "castTo" ++ name ++ " :: IsGObject obj => obj -> " ++ name ++ "\n"
             ++ "castTo" ++ name ++ " = castTo gType" ++ name ++ " \"" ++ name ++ "\"\n\n"
 
             ++ "foreign import javascript unsafe \"window[\\\"" ++ jsname name ++ "\\\"]\" gType" ++ name ++ "' :: JSRef GType\n"
@@ -384,6 +387,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                     , "GHCJS.Foreign (jsNull, ToJSString(..), FromJSString(..), syncCallback, asyncCallback, syncCallback1, asyncCallback1, syncCallback2, asyncCallback2, ForeignRetention(..))"
                     , "GHCJS.Marshal (ToJSRef(..), FromJSRef(..))"
                     , "GHCJS.Marshal.Pure (PToJSRef(..), PFromJSRef(..))"
+                    , "Control.Monad.IO.Class (MonadIO(..))"
                     , "Data.Int (Int64)"
                     , "Data.Word (Word, Word64)"
                     , "GHCJS.DOM.Types"
@@ -398,6 +402,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
       eventImp "GHCJS.DOM.Event" = []
       eventImp "GHCJS.DOM.UIEvent" = []
       eventImp "GHCJS.DOM.MouseEvent" = []
+      eventImp "GHCJS.DOM.EventTarget" = []
       eventImp _ = ["GHCJS.DOM.EventM"]
       docimp = []
 --      docimp = case "createElement" `elem` (map declname smdecls) of
@@ -467,10 +472,13 @@ mkParentMap defns = m2 where
   getintfs _ = []
   m1 = M.fromList $ zip (map getDef allintfs) allintfs
   m2 = M.fromList (map getparents allintfs)
-  getparents i@(I.Interface _ supers _ _ _) = (getDef i, concat $ map parent supers)
+  getparents i@(I.Interface _ supers _ _ _) = (getDef i, nub . concat $ map parent (supers ++ eventTarget i))
   parent pidf = case (pidf `M.member` m1) of
     True  -> (Right pidf) : snd (getparents (fromJust $ M.lookup pidf m1))
     False -> [Left pidf]
+  eventTarget (I.Interface (I.Id name) _ _ at _) | name == "EventTarget" = []
+                                                 | I.ExtAttr (I.Id "EventTarget") [] `elem` at = ["EventTarget"]
+                                                 | otherwise = []
 
 
 -- Fake source location
@@ -567,12 +575,14 @@ mkModImport s = H.HsImportDecl {H.importLoc = nullLoc
 
 intf2inst :: M.Map String [Either String String] -> I.Defn -> [H.HsDecl]
 
-intf2inst pm intf@(I.Interface _ _ _ _ _) = self : parents where
+intf2inst pm intf@(I.Interface _ _ _ at _) = self : parents ++ eventTargetInst where
   sid = getDef intf
   self = mkInstDecl sid sid
   parents = case M.lookup sid pm of
     Nothing -> []
     Just ess -> map (flip mkInstDecl sid) (map (either id id) ess)
+  eventTargetInst | I.ExtAttr (I.Id "EventTarget") [] `elem` at = [mkInstDecl "EventTarget" sid]
+                  | otherwise = []
 
 intf2inst _ _ = []
 
@@ -797,11 +807,10 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
     mkattr (I.Attribute (iatt:iats) b tat raises ext) =
       mkattr (I.Attribute [iatt] b tat raises ext) ++ mkattr (I.Attribute iats b tat raises ext)
     mksetter iid iat tat r = [sjsffi iid iat tat, stsig iid iat tat, simpl iid iat tat r]
-    monadtv = mkTIdent "IO"
     setf intf iat = U.toLowerInitCamel $ getDef intf ++ "Set" ++ U.toUpperHead iat
     getf intf iat = U.toLowerInitCamel $ getDef intf ++ "Get" ++ U.toUpperHead iat
     eventName iat = maybe iat id (stripPrefix "on" iat)
-    eventf intf iat = U.toLowerInitCamel $ getDef intf ++ U.toUpperHead iat
+    eventf intf iat = U.toLowerInitCamel $ getDef intf ++ fixEventName (getDef intf) iat
     sjsffi iid iat tat =
       let monadtv = mkTIdent "IO"
           defop = iid ++ "|" ++ "ghcjs_dom_" ++ gtkName (setf intf iat)
@@ -823,14 +832,15 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
                             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
                             (H.HsVar . H.UnQual $ H.HsIdent "self"))
           val = I.Param I.Required (I.Id "val") tat [I.Mode In]
-          rhs = H.HsUnGuardedRhs $ propExcept (I.setterRaises raises) $ applyParam enums val call
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ propExcept (I.setterRaises raises) $ applyParam enums val call
           match = H.HsMatch nullLoc (H.HsIdent defset) parms rhs [] in
       H.HsFunBind [match]
     stsig iid iat tat =
-      let defset = iid ++ "|" ++ setf intf iat
+      let monadtv = mkTIdent "m"
+          defset = iid ++ "|" ++ setf intf iat
           parm = I.Param I.Required (I.Id "val") tat [I.Mode In]
           parms = mkTIdent "self" : (fst $ tyParm enums parm) : []
-          contxt = ctxSelf iid : (snd $ tyParm enums parm)
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf iid : (snd $ tyParm enums parm)
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
@@ -854,13 +864,14 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
                         H.HsApp
                             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
                             (H.HsVar . H.UnQual $ H.HsIdent "self"))
-          rhs = H.HsUnGuardedRhs $ returnType enums tat $ propExcept (I.getterRaises raises) call
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums tat $ propExcept (I.getterRaises raises) call
           match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
       H.HsFunBind [match]
     gtsig iid iat tat =
-      let defget = iid ++ "|" ++ getf intf iat
+      let monadtv = mkTIdent "m"
+          defget = iid ++ "|" ++ getf intf iat
           parms = [H.HsIdent "self"]
-          contxt = ctxSelf iid : ctxRet tat
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf iid : ctxRet tat
           tpsig = mkTsig (map H.HsTyVar parms)
                          (H.HsTyApp monadtv $ tyRet enums False tat)
           retts = H.HsQualType contxt tpsig in
@@ -868,22 +879,21 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
     mkevent iid iat = [eventtsig iid iat, eventimpl iid iat]
     eventimpl iid iat =
       let defget = iid ++ "|" ++ eventf intf iat
-          ffi = H.HsVar . H.UnQual . H.HsIdent $ "ghcjs_dom_" ++ gtkName (getf intf iat)
           rhs = H.HsUnGuardedRhs $
-          --H.HsApp
-            --(mkVar "Signal")
-            (H.HsParen
-              (H.HsApp
-                (mkVar "connect")
-                (H.HsLit (H.HsString (eventName iat)))
-              )
-            )
+                H.HsApp
+                    (mkVar "unsafeEventName")
+                    (H.HsParen
+                        (H.HsApp
+                            (mkVar "toJSString")
+                            (H.HsLit (H.HsString (eventName iat)))
+                        )
+                    )
           match = H.HsMatch nullLoc (H.HsIdent defget) [] rhs [] in
       H.HsFunBind [match]
     eventtsig iid iat =
       let defget = iid ++ "|" ++ eventf intf iat
-          contxt = [ctxSelf iid]
-          tpsig = mkTsig [] $ eventTyRet iat
+          contxt = [ctxSelf iid, (mkUIdent "IsEventTarget",[mkTIdent "self"])]
+          tpsig = mkTsig [] $ eventTyRet (getDef intf) iat
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
 --    gtcnc iid iat tat =
@@ -964,15 +974,15 @@ intf2meth enums intf@(I.Interface _ _ [I.Operation (I.FunId _ _ parm) resultType
     defop sync withArgs = getDef intf ++ "|" ++ U.toLowerInitCamel (getDef intf) ++ "New"
         ++ (if sync then "Sync" else "Async") ++ (if withArgs then "\'" else "")
     tsig sync withArgs =
-      let monadtv = mkTIdent "IO"
+      let monadtv = mkTIdent "m"
           cparm _ (I.TyApply (I.TySigned False) (I.TyInteger LongLong)) = mkTIdent "Double"
           cparm pname pType = tyRet' pname enums False pType
           cparms = [cparm pname pType | I.Param _ (I.Id pname) pType _ <- parm]
-          cbfunc = [mkTsig cparms (H.HsTyApp monadtv (fst $ tyParm enums resultParam))]
+          cbfunc = [mkTsig cparms (H.HsTyApp (mkTIdent "IO") (fst $ tyParm enums resultParam))]
           parms | sync && withArgs = mkTIdent "ForeignRetention":mkTIdent "Bool":cbfunc
                 | withArgs = mkTIdent "ForeignRetention":cbfunc
                 | otherwise = cbfunc
-          contxt = concat [ctxRet' pname pType | I.Param _ (I.Id pname) pType _ <- (resultParam : parm)]
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : concat [ctxRet' pname pType | I.Param _ (I.Id pname) pType _ <- (resultParam : parm)]
           resultParam = I.Param I.Required (I.Id "result") resultType [I.Mode In]
           tpsig = mkTsig parms (H.HsTyApp monadtv (mkTIdent (typeFor $ getDef intf)))
           retts = H.HsQualType contxt tpsig in
@@ -999,7 +1009,7 @@ intf2meth enums intf@(I.Interface _ _ [I.Operation (I.FunId _ _ parm) resultType
                | sync = H.HsApp (H.HsApp (H.HsApp (mkVar $ callbackMaker) (mkVar "AlwaysRetain")) (mkVar "True")) lambda
                | withArgs = H.HsApp (H.HsApp (mkVar $ callbackMaker) (mkVar "retention")) lambda
                | otherwise = H.HsApp (H.HsApp (mkVar $ callbackMaker) (mkVar "AlwaysRetain")) lambda
-          rhs = H.HsUnGuardedRhs $ castReturn call
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ castReturn call
           match  = H.HsMatch nullLoc (H.HsIdent (defop sync withArgs)) parms rhs []
           applyCParam e param =
             (H.HsInfixApp
@@ -1023,7 +1033,7 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
       Nothing -> getDef op
       Just [] -> getDef op
       Just (s:_) -> s
-    constructors = zip (map (\n -> take n $ repeat '\'') [0..]) $ reverse [parm | x@(I.ExtAttr (I.Id "Constructor") parm) <- at]
+    constructors = zip (map (\n -> take n $ repeat '\'') [0..]) $ reverse [parm | x@(I.ExtAttr (I.Id name) parm) <- at, name `elem` ["Constructor", "CustomConstructor"]]
     mkconstructor c = constructorjsffi c : constructortsig c : constructortimpl c
     constructorRaises | I.ExtAttr (I.Id "ConstructorRaisesException") [] `elem` at = [I.Raises ["RaisesException"]]
                       | otherwise = []
@@ -1035,16 +1045,16 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
           retts = H.HsQualType [] tpsig
           jsimpl = case parm of
                     [I.Param _ _ (I.TyName "DOMString..." _) _] ->
-                        show . renderJs $ [jmacroE| window[`(jsname (getDef intf))`].apply(window, $1) |]
+                        error "Unexpected constuctor parameter DOMString..." -- show . renderJs $ [jmacroE| window[`(jsname (getDef intf))`].apply(window, $1) |]
                     _ ->
-                        show . renderJs $ ApplExpr [jmacroE| new window[`(jsname (getDef intf))`] |]
+                        show . renderJs $ ApplExpr (callNew (getDef intf))
                             (map (\(n, _) -> jsv $ '$':show n) $ zip [1..] parm) in
        H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
     constructortsig (postfix, parm) =
-      let monadtv = mkTIdent "IO"
+      let monadtv = mkTIdent "m"
           defop = getDef intf ++ "|" ++ constructorName ++ postfix
           parms = map (fst . tyParm enums) parm
-          contxt = concat $ map (snd . tyParm enums) parm
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : (concat $ map (snd . tyParm enums) parm)
           tpsig = mkTsig parms (H.HsTyApp monadtv (mkTIdent (typeFor $ getDef intf)))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
@@ -1053,7 +1063,7 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
           ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiConstructorName ++ postfix
           parms = map (H.HsPVar . H.HsIdent . paramName) parm
           call = ffi
-          rhs = H.HsUnGuardedRhs (H.HsInfixApp
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ (H.HsInfixApp
                   (propExcept constructorRaises $ L.foldl (flip $ applyParam enums) call parm)
                   (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
                   (mkVar "fromJSRefUnchecked")
@@ -1082,11 +1092,11 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
                             (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm) in
        H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
     tsig op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
-      let monadtv = mkTIdent "IO"
+      let monadtv = mkTIdent "m"
           -- exprtv = mkTIdent "Expression"
           defop = getDef intf ++ "|" ++ name op parm
           parms =  mkTIdent "self" : (map (fst . tyParm enums) parm)
-          contxt = (ctxSelf (getDef intf) : (concat $ map (snd . tyParm enums) parm)) ++ ctxRet optype
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf (getDef intf) : ((concat $ map (snd . tyParm enums) parm)) ++ ctxRet optype
           -- monadctx = (mkUIdent "Monad",[monadtv])
           tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet enums False optype))
           retts = H.HsQualType contxt tpsig in
@@ -1103,7 +1113,7 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
                             (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
                             (H.HsVar . H.UnQual $ H.HsIdent "self"))
           -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
-          rhs = H.HsUnGuardedRhs $ returnType enums optype $ propExcept raises $ L.foldl (flip $ applyParam enums) call parm
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums optype $ propExcept raises $ L.foldl (flip $ applyParam enums) call parm
 --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
       in  [H.HsFunBind [match]]
@@ -1114,9 +1124,11 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
     jsffiConstructorName = "ghcjs_dom_" ++ gtkName (getDef intf) ++ "_new"
     jsffiName op parm = "ghcjs_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
                                      ++ disambiguate (rawName op) parm
+    -- Only EventTarget needs these (the rest use an IsEventTarget to get them)
+    skip (I.Operation (I.FunId (I.Id "addEventListener") _ _) _ _ _ _) = getDef intf /= "EventTarget"
+    skip (I.Operation (I.FunId (I.Id "removeEventListener") _ _) _ _ _ _) = getDef intf /= "EventTarget"
+    skip (I.Operation (I.FunId (I.Id "dispatchEvent") _ _) _ _ _ _) = getDef intf /= "EventTarget"
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
-    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True -- We use event attribute info instead of addEventListenet and removeEventListner
-    excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
     excludedParam _ = False
     disambiguate "domWindowCSSSupports" [_, _] = "2"
     disambiguate "htmlInputElementSetRangeText" [_, _, _, _] = "4"
@@ -1317,48 +1329,321 @@ tyRet' _ _ _ (I.TyApply (I.TySigned False) (I.TyInteger _)) = mkTIdent "Word"
 tyRet' _ _ ffi (I.TyApply _ (I.TyInteger LongLong)) | ffi = mkTIdent "Double"
                                                  | otherwise = mkTIdent "Int64"
 tyRet' _ _ _ (I.TyApply _ (I.TyInteger _)) = mkTIdent "Int"
-tyRet' _ _ _ (I.TyObject) = H.HsTyApp (mkTIdent "JSRef") (mkTIdent "GObject")
+tyRet' _ _ ffi (I.TyObject) | ffi = H.HsTyApp (mkTIdent "JSRef") (mkTIdent "GObject")
+                            | otherwise = H.HsTyApp (mkTIdent "Maybe") (mkTIdent "GObject")
 tyRet' _ _ _ (I.TyAny) = mkTIdent "(JSRef a)"
 tyRet' _ enums True (I.TyOptional (I.TyInteger LongLong)) = H.HsTyApp (mkTIdent "JSRef") (H.HsTyApp (mkTIdent "Maybe") (mkTIdent "Double"))
 tyRet' _ enums True (I.TyOptional (I.TyApply _ (I.TyInteger LongLong))) = H.HsTyApp (mkTIdent "JSRef") (H.HsTyApp (mkTIdent "Maybe") (mkTIdent "Double"))
 tyRet' _ enums True t = H.HsTyApp (mkTIdent "JSRef") (tyRet enums False t)
 tyRet' _ _ _ t = error $ "Return type " ++ (show t)
 
-eventType "onclick"       = "MouseEvent"
-eventType "oncontextmenu" = "MouseEvent"
-eventType "ondblclick"    = "MouseEvent"
-eventType "ondrag"        = "MouseEvent"
-eventType "ondragstart"   = "MouseEvent"
-eventType "ondragenter"   = "MouseEvent"
-eventType "ondragover"    = "MouseEvent"
-eventType "ondragleave"   = "MouseEvent"
-eventType "ondragend"     = "MouseEvent"
-eventType "ondrop"        = "MouseEvent"
-eventType "onmousedown"   = "MouseEvent"
-eventType "onmousemove"   = "MouseEvent"
-eventType "onmouseout"    = "MouseEvent"
-eventType "onmouseover"   = "MouseEvent"
-eventType "onmouseup"     = "MouseEvent"
-eventType "onmousewheel"  = "MouseEvent"
-eventType _               = "UIEvent"
+fixEventName "DOMWindow" "onblur" = "BlurEvent"
+fixEventName "DOMWindow" "onfocus" = "FocusEvent"
+fixEventName "DOMWindow" "onscroll" = "ScrollEvent"
+fixEventName "Element" "onblur" = "BlurEvent"
+fixEventName "Element" "onfocus" = "FocusEvent"
+fixEventName "FileReader" "onabort" = "AbortEvent"
+fixEventName "HTMLMediaElement" "onpause" = "PauseEvent"
+fixEventName "HTMLMediaElement" "onplay" = "PlayEvent"
+fixEventName "IDBTransaction" "onabort" = "AbortEvent"
+fixEventName "MediaStream" "onaddtrack" = "AddTrackEvent"
+fixEventName "MediaStream" "onremovetrack" = "RemoveTrackEvent"
+fixEventName "Notification" "onshow" = "ShowEvent"
+fixEventName "RTCDataChannel" "onclose" = "CloseEvent"
+fixEventName "RTCPeerConnection" "onaddstream" = "AddStreamEvent"
+fixEventName "RTCPeerConnection" "onremovestream" = "RemoveStreamEvent"
+fixEventName "WebSocket" "onclose" = "CloseEvent"
+fixEventName "XMLHttpRequest" "onabort" = "AbortEvent"
+fixEventName _ ('o':'n':x) = fixEventName' x
+fixEventName i x = error $ "Event that does not start with 'On' : " ++ x ++ " in " ++ i
 
-eventTyRet :: String -> H.HsType
-eventTyRet eventName =
+fixEventName' ('w':'e':'b':'k':'i':'t':x) = "WebKit" ++ fixEventName' x
+fixEventName' "addstream" = "AddStream"
+fixEventName' "addtrack" = "AddTrack"
+fixEventName' "audioprocess" = "AudioProcess"
+fixEventName' "afterprint" = "AfterPrint"
+fixEventName' "beforecopy" = "BeforeCopy"
+fixEventName' "beforecut" = "BeforeCut"
+fixEventName' "beforepaste" = "BeforePaste"
+fixEventName' "beforeunload" = "BeforeUnload"
+fixEventName' "canplay" = "CanPlay"
+fixEventName' "canplaythrough" = "CanPlayThrough"
+fixEventName' "chargingchange" = "ChargingChange"
+fixEventName' "chargingtimechange" = "ChargingTimeChange"
+fixEventName' "contextmenu" = "ContextMenu"
+fixEventName' "cuechange" = "CueChange"
+fixEventName' "currentplaybacktargetiswirelesschanged" = "CurrentPlaybackTargetIsWirelessChanged"
+fixEventName' "datachannel" = "DataChannel"
+fixEventName' "dblclick" = "DblClick"
+fixEventName' "devicemotion" = "DeviceMotion"
+fixEventName' "deviceorientation" = "DeviceOrientation"
+fixEventName' "deviceproximity" = "DeviceProximity"
+fixEventName' "dischargingtimechange" = "DischargingTimeChange"
+fixEventName' "durationchange" = "DurationChange"
+fixEventName' "fullscreenchange" = "FullscreenChange"
+fixEventName' "fullscreenerror" = "FullscreenError"
+fixEventName' "gesturechange" = "GestureChange"
+fixEventName' "gestureend" = "GestureEnd"
+fixEventName' "gesturestart" = "GestureStart"
+fixEventName' "hashchange" = "HashChange"
+fixEventName' "icecandidate" = "IceCandidate"
+fixEventName' "iceconnectionstatechange" = "IceConnectionStateChange"
+fixEventName' "keyadded" = "KeyAdded"
+fixEventName' "keydown" = "KeyDown"
+fixEventName' "keyerror" = "KeyError"
+fixEventName' "keymessage" = "KeyMessage"
+fixEventName' "keypress" = "KeyPress"
+fixEventName' "keyup" = "KeyUp"
+fixEventName' "levelchange" = "LevelChange"
+fixEventName' "loadeddata" = "LoadedData"
+fixEventName' "loadedmetadata" = "LoadedMetadata"
+fixEventName' "loadend" = "LoadEnd"
+fixEventName' "loadingdone" = "LoadingDone"
+fixEventName' "loadstart" = "LoadStart"
+fixEventName' "needkey" = "NeedKey"
+fixEventName' "negotiationneeded" = "NegotiationNeeded"
+fixEventName' "noupdate" = "NoUpdate"
+fixEventName' "orientationchange" = "OrientationChange"
+fixEventName' "overconstrained" = "OverConstrained"
+fixEventName' "pagehide" = "PageHide"
+fixEventName' "pageshow" = "PageShow"
+fixEventName' "playbacktargetavailabilitychanged" = "PlaybackTargetAvailabilityChanged"
+fixEventName' "popstate" = "PopState"
+fixEventName' "ratechange" = "RateChange"
+fixEventName' "readystatechange" = "ReadyStateChange"
+fixEventName' "removestream" = "RemoveStream"
+fixEventName' "removetrack" = "RemoveTrack"
+fixEventName' "resourcetimingbufferfull" = "ResourceTimingBufferFull"
+fixEventName' "selectstart" = "SelectStart"
+fixEventName' "signalingstatechange" = "SignalingStateChange"
+fixEventName' "timeupdate" = "TimeUpdate"
+fixEventName' "tonechange" = "ToneChange"
+fixEventName' "transitionend" = "TransitionEnd"
+fixEventName' "updateready" = "UpdateReady"
+fixEventName' "upgradeneeded" = "UpgradeNeeded"
+fixEventName' "versionchange" = "VersionChange"
+fixEventName' "volumechange" = "VolumeChange"
+fixEventName' "willrevealbottom" = "WillRevealBottom"
+fixEventName' "willrevealleft" = "WillRevealLeft"
+fixEventName' "willrevealright" = "WillRevealRight"
+fixEventName' "willrevealtop" = "WillRevealTop"
+fixEventName' ('a':'n':'i':'m':'a':'t':'i':'o':'n':x) = 'A':'n':'i':'m':'a':'t':'i':'o':'n':U.toUpperHead x
+fixEventName' ('m':'o':'u':'s':'e':x) = 'M':'o':'u':'s':'e':U.toUpperHead x
+fixEventName' ('t':'o':'u':'c':'h':x) = 'T':'o':'u':'c':'h':U.toUpperHead x
+fixEventName' ('d':'r':'a':'g':x) = 'D':'r':'a':'g':U.toUpperHead x
+-- fixEventName' x = trace ("fixEventName' \""++x++"\" = \"" ++ U.toUpperHead x ++ "\"") x
+fixEventName' x = U.toUpperHead x
+
+eventType "XMLHttpRequest"       "onabort"    = "XMLHttpRequestProgressEvent"
+eventType "XMLHttpRequestUpload" "onabort"    = "XMLHttpRequestProgressEvent"
+eventType i "onabort" | "IDB" `isPrefixOf` i  = "Event"
+                      | otherwise             = "UIEvent"
+eventType _ "onafterprint"                    = "Event"
+eventType _ "onanimationstart"                = "AnimationEvent"
+eventType _ "onanimationiteration"            = "AnimationEvent"
+eventType _ "onanimationend"                  = "AnimationEvent"
+eventType _ "onwebkitanimationend"            = "AnimationEvent"
+eventType _ "onwebkitanimationiteration"      = "AnimationEvent"
+eventType _ "onwebkitanimationstart"          = "AnimationEvent"
+eventType _ "onaudioprocess" = "AudioProcessingEvent"
+eventType _ "onbeforeprint" = "Event"
+eventType _ "onbeforeunload" = "BeforeUnloadEvent"
+eventType _ "onbeginEvent" = "TimeEvent"
+eventType _ "onblocked" = "Event"
+eventType _ "onblur" = "FocusEvent"
+eventType _ "oncached" = "Event"
+eventType _ "oncanplay" = "Event"
+eventType _ "oncanplaythrough" = "Event"
+eventType _ "onchange" = "Event"
+eventType _ "onchargingchange" = "Event"
+eventType _ "onchargingtimechange" = "Event"
+eventType _ "onchecking" = "Event"
+eventType _ "onclick" = "MouseEvent"
+eventType _ "onclose" = "Event"
+eventType _ "oncompassneedscalibration" = "Unimplemented"
+eventType i "oncomplete" | "IDB" `isPrefixOf` i  = "Event"
+                         | otherwise = "OfflineAudioCompletionEvent"
+eventType _ "oncompositionend" = "CompositionEvent"
+eventType _ "oncompositionstart" = "CompositionEvent"
+eventType _ "oncompositionupdate" = "CompositionEvent"
+eventType _ "oncontextmenu" = "MouseEvent"
+eventType _ "oncopy" = "Event" -- Mozilla has ClipboardEvent but clipboardData is just on Event in webkit
+eventType _ "oncut" = "Event" -- Mozilla has ClipboardEvent but clipboardData is just on Event in webkit
+eventType _ "ondblclick" = "MouseEvent"
+eventType _ "ondevicelight" = "DeviceLightEvent"
+eventType _ "ondevicemotion" = "DeviceMotionEvent"
+eventType _ "ondeviceorientation" = "DeviceOrientationEvent"
+eventType _ "onwebkitdeviceproximity" = "DeviceProximityEvent"
+eventType _ "ondeviceproximity" = "DeviceProximityEvent"
+eventType _ "ondischargingtimechange" = "Event"
+eventType _ "onDOMContentLoaded" = "Event"
+eventType _ "ondownloading" = "Event"
+eventType _ "ondrag" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondragend" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondragenter" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondragleave" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondragover" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondragstart" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondrop" = "MouseEvent" -- Mozilla has a DragEvent interface
+eventType _ "ondurationchange" = "Event"
+eventType _ "onemptied" = "Event"
+eventType _ "onended" = "Event"
+eventType _ "onendEvent" = "TimeEvent"
+eventType "Document"             "onerror"    = "UIEvent"
+eventType "Element"              "onerror"    = "UIEvent"
+eventType "XMLHttpRequest"       "onerror"    = "XMLHttpRequestProgressEvent"
+eventType "XMLHttpRequestUpload" "onerror"    = "XMLHttpRequestProgressEvent"
+eventType i "onerror" | "IDB" `isPrefixOf` i  = "Event"
+                      | otherwise             = "UIEvent"
+eventType _ "onfocus" = "FocusEvent"
+eventType _ "onfocusinUnimplemented" = "see"
+eventType _ "onfocusoutUnimplemented" = "see"
+eventType _ "onfullscreenchange" = "Event"
+eventType _ "onfullscreenerror" = "Event"
+eventType _ "ongamepadconnected" = "GamepadEvent"
+eventType _ "ongamepaddisconnected" = "GamepadEvent"
+eventType _ "ongesturestart" = "UIEvent"
+eventType _ "ongesturechange" = "UIEvent"
+eventType _ "ongestureend" = "UIEvent"
+eventType _ "onhashchange" = "HashChangeEvent"
+eventType _ "oninput" = "Event"
+eventType _ "oninvalid" = "Event"
+eventType _ "onkeydown" = "KeyboardEvent"
+eventType _ "onkeypress" = "KeyboardEvent"
+eventType _ "onkeyup" = "KeyboardEvent"
+eventType _ "onlanguagechange" = "Event"
+eventType _ "onThe" = "definition"
+eventType _ "onlevelchange" = "Event"
+eventType "XMLHttpRequest"       "onload" = "XMLHttpRequestProgressEvent"
+eventType "XMLHttpRequestUpload" "onload" = "XMLHttpRequestProgressEvent"
+eventType _                      "onload" = "UIEvent"
+eventType _ "onloadeddata" = "Event"
+eventType _ "onloadedmetadata" = "Event"
+eventType _ "onloadend" = "ProgressEvent"
+eventType _ "onloadstart" = "ProgressEvent"
+eventType _ "onmessage" = "MessageEvent"
+eventType _ "onmousedown" = "MouseEvent"
+eventType _ "onmouseenter" = "MouseEvent"
+eventType _ "onmouseleave" = "MouseEvent"
+eventType _ "onmousemove" = "MouseEvent"
+eventType _ "onmouseout" = "MouseEvent"
+eventType _ "onmouseover" = "MouseEvent"
+eventType _ "onmouseup" = "MouseEvent"
+eventType _ "onnoupdate" = "Event"
+eventType _ "onobsolete" = "Event"
+eventType _ "onoffline" = "Event"
+eventType _ "ononline" = "Event"
+eventType _ "onopen" = "Event"
+eventType _ "onorientationchange" = "Event"
+eventType _ "onpagehide" = "PageTransitionEvent"
+eventType _ "onpageshow" = "PageTransitionEvent"
+eventType _ "onpaste" = "Event" -- Mozilla has ClipboardEvent but clipboardData is just on Event in webkit
+eventType _ "onpause" = "Event"
+eventType _ "onpointerlockchange" = "Event"
+eventType _ "onpointerlockerror" = "Event"
+eventType _ "onplay" = "Event"
+eventType _ "onplaying" = "Event"
+eventType _ "onpopstate" = "PopStateEvent"
+eventType "XMLHttpRequest"       "onprogress" = "XMLHttpRequestProgressEvent"
+eventType "XMLHttpRequestUpload" "onprogress" = "XMLHttpRequestProgressEvent"
+eventType _                      "onprogress" = "ProgressEvent"
+eventType _ "onratechange" = "Event"
+eventType _ "onreadystatechange" = "Event"
+eventType _ "onrepeatEvent" = "TimeEvent"
+eventType _ "onreset" = "Event"
+eventType _ "onresize" = "UIEvent"
+eventType _ "onscroll" = "UIEvent"
+eventType _ "onseeked" = "Event"
+eventType _ "onseeking" = "Event"
+eventType _ "onselect" = "UIEvent"
+eventType _ "onshow" = "MouseEvent"
+eventType _ "onstalled" = "Event"
+eventType _ "onstorage" = "StorageEvent"
+eventType _ "onsubmit" = "Event"
+eventType _ "onsuccess" = "Event"
+eventType _ "onsuspend" = "Event"
+eventType _ "onSVGAbort" = "SVGEvent"
+eventType _ "onSVGError" = "SVGEvent"
+eventType _ "onSVGLoad" = "SVGEvent"
+eventType _ "onSVGResize" = "SVGEvent"
+eventType _ "onSVGScroll" = "SVGEvent"
+eventType _ "onSVGUnload" = "SVGEvent"
+eventType _ "onSVGZoom" = "SVGZoomEvent"
+eventType _ "ontimeout" = "ProgressEvent"
+eventType _ "ontimeupdate" = "Event"
+eventType _ "ontouchcancel" = "TouchEvent"
+eventType _ "ontouchend" = "TouchEvent"
+eventType _ "ontouchenter" = "TouchEvent"
+eventType _ "ontouchleave" = "TouchEvent"
+eventType _ "ontouchmove" = "TouchEvent"
+eventType _ "ontouchstart" = "TouchEvent"
+eventType _ "onwebkittransitionend" = "TransitionEvent"
+eventType _ "ontransitionend" = "TransitionEvent"
+eventType _ "onunload" = "UIEvent"
+eventType _ "onupdateready" = "Event"
+eventType _ "onupgradeneeded" = "Event"
+eventType _ "onuserproximity" = "SensorEvent"
+eventType _ "onversionchange" = "IDBVersionChangeEvent"
+eventType _ "onvisibilitychange" = "Event"
+eventType _ "onvolumechange" = "Event"
+eventType _ "onwaiting" = "Event"
+eventType _ "onwheel" = "WheelEvent"
+eventType _ "onaddtrack" = "Event"
+eventType _ "onremovetrack" = "Event"
+eventType _ "onmousewheel" = "MouseEvent"
+eventType _ "onsearch" = "Event"
+eventType _ "onwebkitwillrevealbottom" = "Event"
+eventType _ "onwebkitwillrevealleft" = "Event"
+eventType _ "onwebkitwillrevealright" = "Event"
+eventType _ "onwebkitwillrevealtop" = "Event"
+eventType _ "onbeforecut" = "Event"
+eventType _ "onbeforecopy" = "Event"
+eventType _ "onbeforepaste" = "Event"
+eventType _ "onselectstart" = "Event"
+eventType _ "onwebkitfullscreenchange" = "Event"
+eventType _ "onwebkitfullscreenerror" = "Event"
+eventType _ "onloading" = "Event"
+eventType _ "onloadingdone" = "Event"
+eventType _ "onwebkitkeyadded" = "Event"
+eventType _ "onwebkitkeyerror" = "Event"
+eventType _ "onwebkitkeymessage" = "Event"
+eventType _ "onwebkitneedkey" = "Event"
+eventType _ "onwebkitcurrentplaybacktargetiswirelesschanged" = "Event"
+eventType _ "onwebkitplaybacktargetavailabilitychanged" = "Event"
+eventType _ "onactive" = "Event"
+eventType _ "oninactive" = "Event"
+eventType _ "onmute" = "Event"
+eventType _ "onunmute" = "Event"
+eventType _ "onstarted" = "Event"
+eventType _ "onoverconstrained" = "Event"
+eventType _ "onwebkitresourcetimingbufferfull" = "Event"
+eventType _ "ontonechange" = "Event"
+eventType _ "onnegotiationneeded" = "Event"
+eventType _ "onicecandidate" = "RTCIceCandidateEvent"
+eventType _ "onsignalingstatechange" = "Event"
+eventType _ "onaddstream" = "Event"
+eventType _ "onremovestream" = "Event"
+eventType _ "oniceconnectionstatechange" = "Event"
+eventType _ "ondatachannel" = "Event"
+eventType _ "onconnect" = "Event"
+eventType _ "onstart" = "Event"
+eventType _ "onend" = "Event"
+eventType _ "onresume" = "Event"
+eventType _ "onmark" = "Event"
+eventType _ "onboundary" = "Event"
+eventType _ "oncuechange" = "Event"
+eventType _ "onenter" = "Event"
+eventType _ "onexit" = "Event"
+eventType i e                                 = trace ("Please add:\neventType _ \"" ++ e ++ "\" = \"Event\"") e
+
+eventTyRet :: String -> String -> H.HsType
+eventTyRet interface eventName =
   H.HsTyApp
     (H.HsTyApp
-      (mkTIdent "Signal")
+      (mkTIdent "EventName")
       (mkTIdent "self")
     )
-    (H.HsTyApp
-      (H.HsTyApp
-        (H.HsTyApp
-          (mkTIdent "EventM")
-          (mkTIdent $ eventType eventName)
-        )
-        (mkTIdent "self")
-      )
-      (H.HsTyCon $ H.Special H.HsUnitCon)
-    )
+    (mkTIdent $ eventType interface eventName)
 
 -- The same, for a concrete type
 --
@@ -1399,7 +1684,7 @@ tyParm enums = tyParm' enums False
 tyParmFFI :: [String] -> I.Param -> (H.HsType, [H.HsAsst])
 tyParmFFI enums = tyParm' enums True
 
-tyParm' enums ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) = lookup ptype where
+tyParm' enums ffi param@(I.Param optional (I.Id _) ptype [I.Mode In]) = lookup ptype where
   p = mkTIdent (paramName param)
   lookup ptype =
    case ptype of
@@ -1415,6 +1700,7 @@ tyParm' enums ffi param@(I.Param _ (I.Id _) ptype [I.Mode In]) = lookup ptype wh
     I.TySequence t _ | not ffi -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
     I.TySafeArray t | not ffi -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
     I.TyName "DOMString" Nothing | ffi -> (mkTIdent "JSString", [])
+--                                 | optional == I.Optional -> (H.HsTyApp (mkTIdent "Maybe") p, [(mkUIdent "ToJSString", [p])])
                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
     I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSRef [a]", [])
                                     | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSRef", [p])])
@@ -1469,7 +1755,7 @@ paramName (I.Param _ (I.Id p) _ _) = p
 
 applyParam :: [String] -> I.Param -> H.HsExp -> H.HsExp
 
-applyParam enums param@(I.Param _ (I.Id p) ptype [I.Mode In]) call = lookup ptype where
+applyParam enums param@(I.Param optional (I.Id p) ptype [I.Mode In]) call = lookup ptype where
   pname = mkVar $ paramName param
   lookup ptype =
    case ptype of
@@ -1522,6 +1808,21 @@ applyParam enums param@(I.Param _ (I.Id p) ptype [I.Mode In]) call = lookup ptyp
             (H.HsApp call (mkVar $ paramName param ++ "'"))
           )
         )
+--    I.TyName "DOMString" Nothing | optional == I.Optional ->
+--      H.HsApp
+--        call
+--        (H.HsParen
+--          (H.HsApp
+--            (H.HsApp
+--              (H.HsApp
+--                (mkVar "maybe")
+--                (mkVar "jsNull")
+--              )
+--              (mkVar "toJSString")
+--            )
+--            pname
+--          )
+--        )
     I.TyName "DOMString" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "toJSString") pname)
     I.TyName "DOMString..." Nothing ->
         (H.HsInfixApp
@@ -1629,6 +1930,12 @@ returnType _ (I.TyOptional _) e =
           (H.HsParen e)
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
           (mkVar "fromJSRefUnchecked")
+        )
+returnType _ (I.TyObject) e =
+        (H.HsInfixApp
+          (H.HsParen e)
+          (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
+          (mkVar "fromJSRef")
         )
 returnType _ _ e = e
 
