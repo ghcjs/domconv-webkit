@@ -145,7 +145,7 @@ interface_decl :: { Defn }
 interface_header :: { ([ExtAttribute], Maybe Id, Id, Inherit) }
    : opt_extended_attributes INTERFACE identifier opt_inheritance_spec { ($1,Nothing,$3,$4) }
    | opt_extended_attributes identifier INTERFACE identifier opt_inheritance_spec { ($1,Just $2,$4,$5) }
-   | identifier INTERFACE identifier opt_inheritance_spec { ([],Nothing,$3,$4) }
+   | identifier INTERFACE identifier opt_inheritance_spec { ([],Just $1,$3,$4) }
 
 implements :: { Defn }
    : identifier IMPLEMENTS identifier   { Implements $1 $3 }
@@ -380,7 +380,7 @@ element_spec :: { SwitchArm }
    : type_spec declarator	{ (Param Required $2 $1 []) }
 
 enum_type :: { Type }
-   : ENUM identifier '{' enumerators '}' { TyEnum (Just $2) (reverse $4) }
+   : opt_extended_attributes ENUM identifier '{' enumerators '}' { TyEnum (Just $3) (reverse $5) }
 
 enumerators :: { [(Either Id String,[Attribute],Maybe Expr)] }
    : enumItem				{ [$1] }

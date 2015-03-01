@@ -92,13 +92,14 @@ makeWebkitBindings idl args = do
             endGuard   = "-- AUTO GENERATION ENDS HERE"
             (start, rest) = span (/= startGuard) $ lines current
             middle = takeWhile (/= startGuard) $ dropWhile (/= endGuard) rest
+            allParents = nub $ concatMap (rights . snd) prntmap
         mapM_ (hPutStrLn hh) $ start
         hPutStrLn hh startGuard
-        forM_ prntmap $ \(n, parents) -> hPutStrLn hh . exports $ typeFor n
+        forM_ prntmap $ \(n, parents) -> hPutStrLn hh $ exports (typeFor n) allParents
         mapM_ (hPutStrLn hh) middle
         hPutStrLn hh startGuard
         hPutStrLn hh "-- The remainder of this file is generated from IDL files using domconv-webkit-jsffi"
-        printTypes hh prntmap
+        printTypes hh prntmap allParents
 
 --        let underscore "HTMLIFrameElement" = "html_iframe_element"
 --            underscore "XPathExpression" = "xpath_expression"
@@ -122,11 +123,12 @@ makeWebkitBindings idl args = do
         renameFile hierarchyFile (hierarchyFile ++ ".old")
         renameFile (hierarchyFile ++ ".new") hierarchyFile
 
-    ffiExports name =
-            "  , " ++ name ++ "(" ++ name ++ "), un" ++ name ++ ", Is" ++ name ++ ", "
-            ++ "to" ++ name ++ ", " ++ "castTo" ++ name ++ ", " ++ "gType" ++ name
+    ffiExports name allParents =
+            "  , " ++ name ++ "(" ++ name ++ "), un" ++ name
+            ++ (if name `elem` allParents then ", Is" ++ name ++ ", to" ++ name else "") ++ ", "
+            ++ "castTo" ++ name ++ ", " ++ "gType" ++ name
 
-    ffiTypes hh prntmap =
+    ffiTypes hh prntmap allParents =
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
             let name = typeFor n in
             "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
@@ -153,12 +155,16 @@ makeWebkitBindings idl args = do
             ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNullOrUndefined\n"
             ++ "  {-# INLINE fromJSRef #-}\n\n"
 
-            ++ "class " ++ head (map ("Is"++) (rights parents) ++ ["IsGObject"]) ++ " o => Is" ++ name ++ " o\n"
-            ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
-            ++ "to" ++ name ++ " = unsafeCastGObject . toGObject\n\n"
+            ++ (if name `elem` allParents
+                    then (
+                           "class " ++ head (map ("Is"++) (rights parents) ++ ["IsGObject"]) ++ " o => Is" ++ name ++ " o\n"
+                        ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
+                        ++ "to" ++ name ++ " = unsafeCastGObject . toGObject\n\n"
+                        ++ "instance Is" ++ name ++ " " ++ name ++ "\n"
+                        )
+                    else "")
 
-            ++ concatMap (\parent -> "instance Is" ++ parent ++ " " ++ name ++ "\n")
-                         (name:rights parents)
+            ++ concatMap (\parent -> "instance Is" ++ parent ++ " " ++ name ++ "\n") (rights parents)
             ++ "instance IsGObject " ++ name ++ " where\n"
             ++ "  toGObject = GObject . castRef . un" ++ name ++ "\n"
             ++ "  unsafeCastGObject = " ++ name ++ " . castRef . unGObject\n\n"
@@ -228,6 +234,7 @@ procopts idl opts = do
   x <- runLexM [] inclfile hsrcpr OmgParser.parseIDL
   let prntmap = mkParentMap x
   let valmsg = valParentMap prntmap
+      allParents = nub $ concatMap (rights . snd) $ M.toList prntmap
   when (length valmsg > 0) $ do
     mapM_ (hPutStrLn stderr) valmsg
     exitWith (ExitFailure 2)
@@ -240,7 +247,7 @@ procopts idl opts = do
       }
       modst' = domLoop modst x
 --  mapM_ (putStrLn .show) $ (procmod modst')
-  mapM_ (mapM_ putSplit . splitModule) (procmod modst')
+  mapM_ (mapM_ putSplit . splitModule allParents) (procmod modst')
 
   let getParent (a, (Right b):_) = (b, a)
       getParent (a, _) = ("", a)
@@ -250,6 +257,14 @@ procopts idl opts = do
 getEnums (I.TypeDecl (I.TyEnum (Just (I.Id typename)) _)) = [typename]
 getEnums (I.Module _ defs) = concatMap getEnums defs
 getEnums _ = []
+
+getAllInterfaces (I.Interface (I.Id name) _ _ _ _) = [name]
+getAllInterfaces (I.Module _ defs) = concatMap getAllInterfaces defs
+getAllInterfaces _ = []
+
+getParents (I.Interface _ names _ _ _) = names
+getParents (I.Module _ defs) = concatMap getParents defs
+getParents _ = []
 
 -- Retrieve a module name as a string from Module
 
@@ -275,18 +290,18 @@ makeNewGObject = ()
 mkEventTarget = castRef
 -}
 
-putSplit :: H.HsModule -> IO ()
+putSplit :: (H.HsModule, String -> Maybe String) -> IO ()
 
-putSplit mod@(H.HsModule _ modid _ _ _) = do
+putSplit (mod@(H.HsModule _ modid _ _ _), comment) = do
   let components = U.split '.' $ modName modid
       name = head (drop 2 components)
 
   createDirectoryIfMissing True (concat $ intersperse "/" $ init components)
   Prelude.writeFile ((concat $ intersperse "/" ("src":components)) ++ ".hs") $
-        "{-# LANGUAGE CPP #-}\n"
+        "{-# LANGUAGE CPP, PatternSynonyms #-}\n"
      ++ "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
      ++ "{-# LANGUAGE ForeignFunctionInterface, JavaScriptFFI #-}\n"
-     ++ prettyJS mod
+     ++ prettyJS mod comment
      ++ "\n#else\n"
      ++ "module " ++ modName modid ++ " (\n"
      ++ (if moduleInWebKitGtk name then "  module Graphics.UI.Gtk.WebKit.DOM." ++ name ++ "\n" else "")
@@ -294,7 +309,7 @@ putSplit mod@(H.HsModule _ modid _ _ _) = do
      ++ (if moduleInWebKitGtk name then "import Graphics.UI.Gtk.WebKit.DOM." ++ name ++ "\n" else "")
      ++ "#endif\n"
 
-prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
+prettyJS (H.HsModule pos m mbExports imp decls) comment = concat . intersperse "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
      : map prettyDecl decls
   where
@@ -313,27 +328,27 @@ prettyJS (H.HsModule pos m mbExports imp decls) = concat . intersperse "\n" $
                         Just ('\'':_) -> ""
                         _ -> s
     fix = fix' "new" . fix' "newSync" . fix' "newAsync"
-    comment n = do
-        iname <- interfaceName
-        p <- prefix
-        f <- U.toLowerInitCamel . stripGetSet <$> stripPrefix p n
-        let func' = fix f
-            func = if null func' then "" else "." ++ func'
-        return $ "\n-- | <https://developer.mozilla.org/en-US/docs/Web/API/"
-                      ++ jsname iname ++ func ++ " Mozilla " ++ jsname iname ++ func ++ " documentation>"
+--    comment n = do
+--        iname <- interfaceName
+--        p <- prefix
+--        f <- U.toLowerInitCamel . stripGetSet <$> stripPrefix p n
+--        let func' = fix f
+--            func = if null func' then "" else "." ++ func'
+--        return $ "\n-- | <https://developer.mozilla.org/en-US/docs/Web/API/"
+--                      ++ jsname iname ++ func ++ " Mozilla " ++ jsname iname ++ func ++ " documentation>"
 
 -- Split a proto-module created by domLoop. All class, data, and instance definitions
 -- remain in the "head" class. All methods are grouped by their `this' argument
 -- context and placed into modules with the name of that context (first character removed).
 -- All modules get the same imports that the "head" module has plus the "head" module itself.
 
-splitModule :: H.HsModule -> [H.HsModule]
+splitModule :: [String] -> H.HsModule -> [(H.HsModule, String -> Maybe String)]
 
-splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
+splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
   headns = modNS $ modName modid
-  headmod = H.HsModule nullLoc modid headexp imps headdecls
+--  headmod = H.HsModule nullLoc modid headexp imps headdecls
   headdecls = filter (null . nsOf) decls
-  headexp = Just $ map (mkEIdent . declname) (classes)
+--  headexp = Just $ map (mkEIdent . declname) (classes)
 --  datas = filter datadecl decls
 --  datadecl (H.HsDataDecl _ _ _ _ _ _) = True
 --  datadecl (H.HsNewTypeDecl _ _ _ _ _ _) = True
@@ -354,15 +369,19 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
   declname (H.HsFunBind [H.HsMatch _ (H.HsIdent s) _ _ _]) = s
   declname (H.HsInstDecl _ _ (H.UnQual (H.HsIdent s)) _ _) = s
   declname _ = ""
+  mkEIdent (H.HsDataDecl _ _ (H.HsIdent s) _ _ _) = H.HsEThingAll . H.UnQual $ H.HsIdent s
+  mkEIdent decl = H.HsEVar . H.UnQual . H.HsIdent $ declname decl
   mtsigs = filter (not . null . nsOf) (reverse decls)
-  corrn = drop 1 . dropWhile (/= '|')
-  methcorrn (H.HsForeignImport a b c d (H.HsIdent s) f) = H.HsForeignImport a b c d (H.HsIdent (corrn s)) f
-  methcorrn (H.HsTypeSig x [H.HsIdent s] y) = H.HsTypeSig x [H.HsIdent (corrn s)] y
+  corrn = drop 1 . dropWhile (/= '|') . drop 1 . dropWhile (/= '|')
+  renameMap s = [(corrn s, takeWhile (/= '|') . drop 1 $ dropWhile (/= '|') s)]
+  methcorrn (H.HsForeignImport a b c d (H.HsIdent s) f) = (H.HsForeignImport a b c d (H.HsIdent (corrn s)) f, renameMap s)
+  methcorrn (H.HsTypeSig x [H.HsIdent s] y) = (H.HsTypeSig x [H.HsIdent (corrn s)] y, renameMap s)
   methcorrn (H.HsFunBind [H.HsMatch x (H.HsIdent s) y z t]) =
-    H.HsFunBind [H.HsMatch x (H.HsIdent (corrn s)) y z t]
-  methcorrn (H.HsDataDecl a b (H.HsIdent s) c d e) = H.HsDataDecl a b (H.HsIdent (corrn s)) c d e
-  methcorrn (H.HsInstDecl a b (H.UnQual (H.HsIdent s)) c d) = H.HsInstDecl a b (H.UnQual (H.HsIdent (corrn s))) c d
-  methcorrn z = z
+    (H.HsFunBind [H.HsMatch x (H.HsIdent (corrn s)) y z t], renameMap s)
+  methcorrn (H.HsDataDecl a b (H.HsIdent s) c d e) = (H.HsDataDecl a b (H.HsIdent (corrn s)) c d e, renameMap s)
+  methcorrn (H.HsInstDecl a b (H.UnQual (H.HsIdent s)) c d) = (H.HsInstDecl a b (H.UnQual (H.HsIdent (corrn s))) c d, renameMap s)
+  methcorrn z = (z, [])
+
   nsOf x = case span (/= '|') (declname x) of
                 (_, "") -> ""
                 (ns, _) -> ns
@@ -373,17 +392,21 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
           mns -> mns ++ "."
     in (i, methcorrn meth)
   methmap = mkmethmap M.empty (map methassoc mtsigs)
+--  mkmethmap :: M.Map String (H.HsDecl, [(String, String)]) -> [(String, (H.HsDecl, [(String, String)]))] -> M.Map String (H.HsDecl, [(String, String)])
   mkmethmap m [] = m
   mkmethmap m ((i, meth) : ims) = mkmethmap addmeth ims where
     addmeth = case M.lookup i m of
       Nothing -> M.insert i [meth] m
       (Just meths) -> M.insert i (meth : meths) m
+  submods :: [(H.HsModule, (String -> Maybe String))]
   submods = M.elems $ M.mapWithKey mksubmod methmap
+  mksubmod :: String -> [(H.HsDecl, [(String, String)])] -> (H.HsModule, (String -> Maybe String))
   mksubmod iid smdecls =
-    H.HsModule nullLoc (H.Module iid) (Just subexp)
+    (H.HsModule nullLoc (H.Module iid) (Just subexp)
                -- (mkModImport modid : (imps ++ docimp))
                (map (mkModImport . H.Module) ([
-                      "GHCJS.Types (JSRef(..), JSString, castRef)"
+                      "Prelude ((.), (==), (>>=), return, IO, Int, Float, Double, Bool(..), Maybe, maybe, fromIntegral, round, fmap)"
+                    , "GHCJS.Types (JSRef(..), JSString, castRef)"
                     , "GHCJS.Foreign (jsNull, ToJSString(..), FromJSString(..), syncCallback, asyncCallback, syncCallback1, asyncCallback1, syncCallback2, asyncCallback2, ForeignRetention(..))"
                     , "GHCJS.Marshal (ToJSRef(..), FromJSRef(..))"
                     , "GHCJS.Marshal.Pure (PToJSRef(..), PFromJSRef(..))"
@@ -395,15 +418,32 @@ splitModule (H.HsModule _ modid mbexp imps decls) = headmod : submods where
                     ] ++ if name == "Enums"
                             then []
                             else eventImp iid ++ ["GHCJS.DOM.Enums"]))
-               (H.HsFunBind [] : smdecls) where
+               (H.HsFunBind [] : map fst smdecls), comment) where
+      renameMap :: M.Map String String
+      renameMap = M.fromList $ concatMap snd smdecls
+      realName :: String -> String
+      realName s = case M.lookup s renameMap of
+                        Just "" -> ""
+                        Just n  -> "." ++ n
+                        Nothing -> ""
+      comment :: String -> Maybe String
+      comment n = do
+        iname <- stripPrefix "GHCJS.DOM." $ iid
+        return $ "\n-- | <https://developer.mozilla.org/en-US/docs/Web/API/"
+                      ++ jsname iname ++ realName n ++ " Mozilla " ++ jsname iname ++ realName n ++ " documentation>"
       name = typeFor . reverse . takeWhile (/= '.') $ reverse iid
-      subexp = map mkEIdent . nub $ (filter (not . isSuffixOf "'") $ map declname smdecls) ++
-                if name == "Enums" then [] else [name, "Is" ++ name, "castTo" ++ name, "gType" ++ name, "to" ++ name]
+--      subexp = map mkEIdent . nub $ (filter (not . isSuffixOf "'") $ map declname smdecls) ++
+      subexp = nub $ map (mkEIdent . fst) smdecls ++
+                if name == "Enums"
+                    then []
+                    else map (H.HsEVar . H.UnQual . H.HsIdent) ([name, "castTo" ++ name, "gType" ++ name] ++ parentExp)
+      parentExp | name `elem` allParents = ["Is" ++ name, "to" ++ name]
+                | otherwise = []
       eventImp "GHCJS.DOM.Event" = []
       eventImp "GHCJS.DOM.UIEvent" = []
       eventImp "GHCJS.DOM.MouseEvent" = []
       eventImp "GHCJS.DOM.EventTarget" = []
-      eventImp _ = ["GHCJS.DOM.EventM"]
+      eventImp _ = ["GHCJS.DOM.EventM (EventName, unsafeEventName)"]
       docimp = []
 --      docimp = case "createElement" `elem` (map declname smdecls) of
 --        True -> []
@@ -523,7 +563,7 @@ typeFor  "Attr" = "DOMAttr"
 typeFor  "Key" = "CryptoKey"
 typeFor  "AlgorithmIdentifier" = "DOMString"
 typeFor  "KeyFormat" = "DOMString"
-typeFor  "XMLHttpRequestResponseType" = "DOMString"
+-- typeFor  "XMLHttpRequestResponseType" = "DOMString"
 typeFor  "custom" = "CanvasStyle"
 typeFor  s = s
 fixType (I.TyName s x) = I.TyName (typeFor s) x
@@ -545,6 +585,10 @@ mod2mod st md@(I.Module _ moddefs') =
   H.HsModule nullLoc (H.Module modid') (Just []) imps decls where
     moddefs = map fixDefn moddefs'
     enums = concatMap getEnums moddefs
+    all = concatMap getAllInterfaces moddefs
+    parents = nub $ concatMap getParents moddefs
+    leaves = map typeFor $ filter (`notElem` parents) all
+    isLeaf = flip elem leaves . typeFor
     modlst = ["Control.Monad"]
     modid' = renameMod $ getDef md
     imps = [] -- map mkModImport (map H.Module (modlst ++ imp st))
@@ -553,9 +597,9 @@ mod2mod st md@(I.Module _ moddefs') =
     decls = types ++ classes ++ instances ++ methods ++ attrs ++ makers
     makers  = concat $ map intf2maker intfs
     classes = concat $ map intf2class intfs
-    methods = concat $ map (intf2meth enums) intfs
+    methods = concat $ map (intf2meth enums isLeaf) intfs
     types = concat $ map intf2type moddefs
-    attrs = concat $ map (intf2attr enums) intfs
+    attrs = concat $ map (intf2attr enums isLeaf) intfs
     instances = concat $ map (intf2inst $ pm st) intfs
 
 mod2mod _ z = error $ "Input of mod2mod should be a Module but is " ++ show z
@@ -597,22 +641,22 @@ intf2type :: I.Defn -> [H.HsDecl]
 --    [H.HsConDecl nullLoc typename []] []]
 
 intf2type (I.TypeDecl (I.TyEnum (Just (I.Id typename)) vals)) =
-    [H.HsDataDecl nullLoc [] (H.HsIdent $ "Enums|" ++ typename) []
+    [H.HsDataDecl nullLoc [] (H.HsIdent $ "Enums||" ++ typename) []
       (map constructor vals) [],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums|PToJSRef")
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||PToJSRef")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
         [H.HsFunBind (map ptoJsRef vals)],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums|ToJSRef")
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||ToJSRef")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
         [H.HsFunBind
             [H.HsMatch nullLoc (H.HsIdent "toJSRef") []
                 (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "ptoJSRef")) []
             ]
         ],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums|PFromJSRef")
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||PFromJSRef")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
         [H.HsFunBind (map pfromJsRef vals)],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums|FromJSRef")
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||FromJSRef")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
         [H.HsFunBind
             [H.HsMatch nullLoc (H.HsIdent "fromJSRefUnchecked") []
@@ -628,7 +672,7 @@ intf2type (I.TypeDecl (I.TyEnum (Just (I.Id typename)) vals)) =
     constructor val = error $ "Unhandled enum value " ++ show val
     jsffi (Right n, _, Nothing) = H.HsForeignImport nullLoc "javascript" H.HsUnsafe
         ("\"" ++ n ++ "\"")
-        (H.HsIdent $ "Enums|js_" ++ typename ++ conName n)
+        (H.HsIdent $ "Enums||js_" ++ typename ++ conName n)
         (H.HsTyApp (mkTIdent "JSRef") (mkTIdent typename))
     jsffi val = error $ "Unhandled enum value " ++ show val
     ptoJsRef (Right n, _, Nothing) =
@@ -643,6 +687,7 @@ intf2type (I.TypeDecl (I.TyEnum (Just (I.Id typename)) vals)) =
     pfromJsRef val = error $ "Unhandled enum value " ++ show val
     conName = concatMap conPart . splitOn "-"
     conPart (initial : rest) = toUpper initial : rest
+    conPart [] = ""
 
 intf2type _ = []
 
@@ -790,9 +835,9 @@ tagFor _ = ""
 -- These methods are wrappers around type-neutral unsafe get/set property
 -- functions.
 
-intf2attr :: [String] -> I.Defn -> [H.HsDecl]
+intf2attr :: [String] -> (String -> Bool) -> I.Defn -> [H.HsDecl]
 
-intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
+intf2attr enums isLeaf intf@(I.Interface (I.Id iid) _ cldefs _ _) =
   concat $ map mkattr $ collectAttrs intf where
     mkattr (I.Attribute [] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "type"] _ _ _ _) = [] -- Use GType instead
@@ -807,78 +852,65 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
     mkattr (I.Attribute (iatt:iats) b tat raises ext) =
       mkattr (I.Attribute [iatt] b tat raises ext) ++ mkattr (I.Attribute iats b tat raises ext)
     mksetter iid iat tat r = [sjsffi iid iat tat, stsig iid iat tat, simpl iid iat tat r]
-    setf intf iat = U.toLowerInitCamel $ getDef intf ++ "Set" ++ U.toUpperHead iat
-    getf intf iat = U.toLowerInitCamel $ getDef intf ++ "Get" ++ U.toUpperHead iat
+    setf intf iat = U.toLowerInitCamel $ "set" ++ U.toUpperHead iat
+    getf intf iat = U.toLowerInitCamel $ "get" ++ U.toUpperHead iat
     eventName iat = maybe iat id (stripPrefix "on" iat)
-    eventf intf iat = U.toLowerInitCamel $ getDef intf ++ fixEventName (getDef intf) iat
+    eventf intf iat = U.toLowerInitCamel $ fixEventName (getDef intf) iat
     sjsffi iid iat tat =
       let monadtv = mkTIdent "IO"
-          defop = iid ++ "|" ++ "ghcjs_dom_" ++ gtkName (setf intf iat)
+          defop = iid ++ "|" ++ iat ++ "|" ++ "js_" ++ setf intf iat
           parm = [I.Param I.Required (I.Id "val") tat [I.Mode In]]
-          parms = ffiTySelf intf : map (fst . tyParmFFI enums) parm
+          parms = ffiTySelf intf : map (fst . tyParmFFI enums isLeaf) parm
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType [] tpsig
           jsimpl = show . renderJs $ [jmacro| $1[`(iat)`] = $2 |] in
        H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
     simpl iid iat tat raises =
-      let defset = iid ++ "|" ++ setf intf iat
-          ffi = H.HsVar . H.UnQual . H.HsIdent $ "ghcjs_dom_" ++ gtkName (setf intf iat)
+      let defset = iid ++ "|" ++ iat ++ "|" ++ setf intf iat
+          ffi = H.HsVar . H.UnQual . H.HsIdent $ "js_" ++ setf intf iat
           parms = [H.HsPVar $ H.HsIdent "self", H.HsPVar $ H.HsIdent "val"]
-          call = H.HsApp ffi . H.HsParen $
-                H.HsApp
-                    (H.HsVar . H.UnQual . H.HsIdent $ "un" ++ typeFor (getDef intf))
-                    (H.HsParen $
-                        H.HsApp
-                            (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
-                            (H.HsVar . H.UnQual $ H.HsIdent "self"))
+          call = applySelf isLeaf iid ffi
           val = I.Param I.Required (I.Id "val") tat [I.Mode In]
-          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ propExcept (I.setterRaises raises) $ applyParam enums val call
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ propExcept (I.setterRaises raises) $ applyParam enums isLeaf val call
           match = H.HsMatch nullLoc (H.HsIdent defset) parms rhs [] in
       H.HsFunBind [match]
     stsig iid iat tat =
       let monadtv = mkTIdent "m"
-          defset = iid ++ "|" ++ setf intf iat
+          defset = iid ++ "|" ++ iat ++ "|" ++ setf intf iat
           parm = I.Param I.Required (I.Id "val") tat [I.Mode In]
-          parms = mkTIdent "self" : (fst $ tyParm enums parm) : []
-          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf iid : (snd $ tyParm enums parm)
+          parms = tySelf isLeaf iid : (fst $ tyParm enums isLeaf parm) : []
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf iid ++ (snd $ tyParm enums isLeaf parm)
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter iid iat tat r = [gjsffi iid iat tat, gtsig iid iat tat, gimpl iid iat tat r]
     gjsffi iid iat tat =
       let monadtv = mkTIdent "IO"
-          defop = iid ++ "|" ++ "ghcjs_dom_" ++ gtkName (getf intf iat)
+          defop = iid ++ "|" ++ iat ++ "|" ++ "js_" ++ getf intf iat
           parms = [ffiTySelf intf]
           tpsig = mkTsig parms (H.HsTyApp monadtv $ tyRet enums True tat)
           retts = H.HsQualType [] tpsig
           jsimpl = show . renderJs . jsReturn tat $ [jmacroE| $1[`(iat)`] |] in
        H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
     gimpl iid iat tat raises =
-      let defget = iid ++ "|" ++ getf intf iat
-          ffi = H.HsVar . H.UnQual . H.HsIdent $ "ghcjs_dom_" ++ gtkName (getf intf iat)
+      let defget = iid ++ "|" ++ iat ++ "|" ++ getf intf iat
+          ffi = H.HsVar . H.UnQual . H.HsIdent $ "js_" ++ getf intf iat
           parm = H.HsPVar $ H.HsIdent "self"
-          call = H.HsApp ffi . H.HsParen $
-                H.HsApp
-                    (H.HsVar . H.UnQual . H.HsIdent $ "un" ++ typeFor (getDef intf))
-                    (H.HsParen $
-                        H.HsApp
-                            (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
-                            (H.HsVar . H.UnQual $ H.HsIdent "self"))
+          call = applySelf isLeaf iid ffi
           rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums tat $ propExcept (I.getterRaises raises) call
           match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
       H.HsFunBind [match]
     gtsig iid iat tat =
       let monadtv = mkTIdent "m"
-          defget = iid ++ "|" ++ getf intf iat
-          parms = [H.HsIdent "self"]
-          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf iid : ctxRet tat
-          tpsig = mkTsig (map H.HsTyVar parms)
-                         (H.HsTyApp monadtv $ tyRet enums False tat)
+          defget = iid ++ "|" ++ iat ++ "|" ++ getf intf iat
+          parms = [tySelf isLeaf iid]
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf iid ++ ctxRet tat
+          tpsig = mkTsig parms (H.HsTyApp monadtv $ tyRet enums False tat)
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
     mkevent iid iat = [eventtsig iid iat, eventimpl iid iat]
     eventimpl iid iat =
-      let defget = iid ++ "|" ++ eventf intf iat
+      let defget = iid ++ "|" ++ iat ++ "|" ++ eventf intf iat
           rhs = H.HsUnGuardedRhs $
                 H.HsApp
                     (mkVar "unsafeEventName")
@@ -891,9 +923,11 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
           match = H.HsMatch nullLoc (H.HsIdent defget) [] rhs [] in
       H.HsFunBind [match]
     eventtsig iid iat =
-      let defget = iid ++ "|" ++ eventf intf iat
-          contxt = [ctxSelf iid, (mkUIdent "IsEventTarget",[mkTIdent "self"])]
-          tpsig = mkTsig [] $ eventTyRet (getDef intf) iat
+      let defget = iid ++ "|" ++ iat ++ "|" ++ eventf intf iat
+          contxt' = ctxSelf isLeaf iid
+          contxt | null contxt' = []
+                 | otherwise = contxt' ++ [(mkUIdent "IsEventTarget",[mkTIdent "self"])]
+          tpsig = mkTsig [] $ eventTyRet isLeaf (getDef intf) iat
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defget] retts
 --    gtcnc iid iat tat =
@@ -913,7 +947,7 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
 
 
 
-intf2attr _ _ = []
+intf2attr _ _ _ = []
 
 -- Create a Javascript body for a getter. Template for a getter is:
 -- get'prop this = do
@@ -966,19 +1000,19 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
 -- Only `In' parameters are supported at this time. The "this" argument
 -- goes last to make monadic composition of actions easier.
 
-intf2meth :: [String] -> I.Defn -> [H.HsDecl]
+intf2meth :: [String] -> (String -> Bool) -> I.Defn -> [H.HsDecl]
 
-intf2meth enums intf@(I.Interface _ _ [I.Operation (I.FunId _ _ parm) resultType _ _ _] _ (Just (I.Id "callback"))) =
+intf2meth enums isLeaf intf@(I.Interface _ _ (I.Operation (I.FunId _ _ parm) resultType _ _ _:_) _ (Just (I.Id "callback"))) =
     [f sync withArgs | sync <- [True, False], withArgs <- [False, True], f <- [tsig, timpl]]
   where
-    defop sync withArgs = getDef intf ++ "|" ++ U.toLowerInitCamel (getDef intf) ++ "New"
+    defop sync withArgs = getDef intf ++ "||new" ++ getDef intf
         ++ (if sync then "Sync" else "Async") ++ (if withArgs then "\'" else "")
     tsig sync withArgs =
       let monadtv = mkTIdent "m"
           cparm _ (I.TyApply (I.TySigned False) (I.TyInteger LongLong)) = mkTIdent "Double"
           cparm pname pType = tyRet' pname enums False pType
           cparms = [cparm pname pType | I.Param _ (I.Id pname) pType _ <- parm]
-          cbfunc = [mkTsig cparms (H.HsTyApp (mkTIdent "IO") (fst $ tyParm enums resultParam))]
+          cbfunc = [mkTsig cparms (H.HsTyApp (mkTIdent "IO") (fst $ tyParm enums isLeaf resultParam))]
           parms | sync && withArgs = mkTIdent "ForeignRetention":mkTIdent "Bool":cbfunc
                 | withArgs = mkTIdent "ForeignRetention":cbfunc
                 | otherwise = cbfunc
@@ -1004,7 +1038,8 @@ intf2meth enums intf@(I.Interface _ _ [I.Operation (I.FunId _ _ parm) resultType
                     | otherwise = show (length parm)
           callbackMaker | sync = "syncCallback" ++ callbackN
                         | otherwise = "asyncCallback" ++ callbackN
-          lambda = H.HsParen (H.HsLambda nullLoc cparms (L.foldl applyCParam (mkVar "callback") parm))
+          lambda | null parm = mkVar "callback"
+                 | otherwise = H.HsParen (H.HsLambda nullLoc cparms (L.foldl applyCParam (mkVar "callback") parm))
           call | sync && withArgs = H.HsApp (H.HsApp (H.HsApp (mkVar $ callbackMaker) (mkVar "retention")) (mkVar "continueAsync")) lambda
                | sync = H.HsApp (H.HsApp (H.HsApp (mkVar $ callbackMaker) (mkVar "AlwaysRetain")) (mkVar "True")) lambda
                | withArgs = H.HsApp (H.HsApp (mkVar $ callbackMaker) (mkVar "retention")) lambda
@@ -1024,7 +1059,7 @@ intf2meth enums intf@(I.Interface _ _ [I.Operation (I.FunId _ _ parm) resultType
             )
       in  H.HsFunBind [match]
 
-intf2meth enums intf@(I.Interface _ _ cldefs at _) =
+intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at _) =
   (concat $ map mkconstructor constructors) ++
   (concat $ map mkmeth $ collectOps intf) ++
   (concat $ map mkconst $ collectConst intf) where
@@ -1039,8 +1074,8 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
                       | otherwise = []
     constructorjsffi (postfix, parm) =
       let monadtv = mkTIdent "IO"
-          defop = getDef intf ++ "|" ++ jsffiConstructorName ++ postfix
-          parms = map (fst . tyParmFFI enums) parm
+          defop = getDef intf ++ "||" ++ jsffiConstructorName ++ postfix
+          parms = map (fst . tyParmFFI enums isLeaf) parm
           tpsig = mkTsig parms (H.HsTyApp monadtv (ffiTySelf intf))
           retts = H.HsQualType [] tpsig
           jsimpl = case parm of
@@ -1052,36 +1087,37 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
        H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
     constructortsig (postfix, parm) =
       let monadtv = mkTIdent "m"
-          defop = getDef intf ++ "|" ++ constructorName ++ postfix
-          parms = map (fst . tyParm enums) parm
-          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : (concat $ map (snd . tyParm enums) parm)
+          defop = getDef intf ++ "||" ++ constructorName ++ postfix
+          parms = map (fst . tyParm enums isLeaf) parm
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : (concat $ map (snd . tyParm enums isLeaf) parm)
           tpsig = mkTsig parms (H.HsTyApp monadtv (mkTIdent (typeFor $ getDef intf)))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
     constructortimpl (postfix, parm) =
-      let defop = getDef intf ++ "|" ++ constructorName ++ postfix
+      let defop = getDef intf ++ "||" ++ constructorName ++ postfix
           ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiConstructorName ++ postfix
           parms = map (H.HsPVar . H.HsIdent . paramName) parm
           call = ffi
           rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ (H.HsInfixApp
-                  (propExcept constructorRaises $ L.foldl (flip $ applyParam enums) call parm)
+                  (propExcept constructorRaises $ L.foldl (flip $ applyParam enums isLeaf) call parm)
                   (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
                   (mkVar "fromJSRefUnchecked")
                 )
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
       in  [H.HsFunBind [match]]
     mkconst cn@(I.Constant (I.Id cid) _ _ (I.Lit (IntegerLit (ILit base val)))) =
-      let defcn = getDef intf ++ "|c" ++ cid
+      let defcn = getDef intf ++ "||pattern " ++ cid
           match = H.HsMatch nullLoc (H.HsIdent defcn) [] crhs []
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
 --    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") [] `elem` ext = []
+    mkmeth (I.Operation (I.FunId (I.Id "handleEvent") _ _) _ _ _ _) | getDef intf `notElem` ["EventListener"] = error $ "Unexpected handleEvent function in " ++ show intf
     mkmeth op | skip op = []
     mkmeth op = jsffi op : tsig op : timpl op
     jsffi op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
       let monadtv = mkTIdent "IO"
-          defop = getDef intf ++ "|" ++ jsffiName op parm
-          parms = ffiTySelf intf : map (fst . tyParmFFI enums) parm
+          defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ jsffiName op parm
+          parms = ffiTySelf intf : map (fst . tyParmFFI enums isLeaf) parm
           tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet enums True optype))
           retts = H.HsQualType [] tpsig
           jsimpl = case parm of
@@ -1094,120 +1130,118 @@ intf2meth enums intf@(I.Interface _ _ cldefs at _) =
     tsig op@(I.Operation (I.FunId _ _ parm) optype _ _ _) =
       let monadtv = mkTIdent "m"
           -- exprtv = mkTIdent "Expression"
-          defop = getDef intf ++ "|" ++ name op parm
-          parms =  mkTIdent "self" : (map (fst . tyParm enums) parm)
-          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf (getDef intf) : ((concat $ map (snd . tyParm enums) parm)) ++ ctxRet optype
+          defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ name op parm
+          parms = (tySelf isLeaf $ getDef intf) : (map (fst . tyParm enums isLeaf) parm)
+          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf (getDef intf) ++ ((concat $ map (snd . tyParm enums isLeaf) parm)) ++ ctxRet optype
           -- monadctx = (mkUIdent "Monad",[monadtv])
           tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet enums False optype))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defop] retts
     timpl op@(I.Operation (I.FunId _ _ parm) optype raises _ _) =
-      let defop = getDef intf ++ "|" ++ name op parm
+      let defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ name op parm
           ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op parm
           parms = map H.HsPVar (map H.HsIdent ("self" : map paramName parm))
-          call = H.HsApp ffi . H.HsParen $
-                H.HsApp
-                    (H.HsVar . H.UnQual . H.HsIdent $ "un" ++ typeFor (getDef intf))
-                    (H.HsParen $
-                        H.HsApp
-                            (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor (getDef intf))
-                            (H.HsVar . H.UnQual $ H.HsIdent "self"))
+          call = applySelf isLeaf (getDef intf) ffi
           -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
-          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums optype $ propExcept raises $ L.foldl (flip $ applyParam enums) call parm
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums optype $ propExcept raises $ L.foldl (flip $ applyParam enums isLeaf) call parm
 --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
       in  [H.HsFunBind [match]]
-    constructorName = (U.toLowerInitCamel $ getDef intf) ++ "New"
-    rawName op = (U.toLowerInitCamel $ getDef intf) ++ (U.toUpperHead $ getDefHs op)
-    name op parm = rawName op ++ disambiguate (rawName op) parm
+    constructorName = "new" ++ getDef intf
+    rawName op = getDefHs op
+    name op parm = rawName op ++ disambiguate (getDef intf) (rawName op) parm
 --    jsffiName op parm = name op parm ++ "'"
-    jsffiConstructorName = "ghcjs_dom_" ++ gtkName (getDef intf) ++ "_new"
-    jsffiName op parm = "ghcjs_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
-                                     ++ disambiguate (rawName op) parm
+    jsffiConstructorName = "js_new" ++ getDef intf
+    jsffiName op parm = "js_" ++ name op parm
     -- Only EventTarget needs these (the rest use an IsEventTarget to get them)
     skip (I.Operation (I.FunId (I.Id "addEventListener") _ _) _ _ _ _) = getDef intf /= "EventTarget"
     skip (I.Operation (I.FunId (I.Id "removeEventListener") _ _) _ _ _ _) = getDef intf /= "EventTarget"
     skip (I.Operation (I.FunId (I.Id "dispatchEvent") _ _) _ _ _ _) = getDef intf /= "EventTarget"
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
     excludedParam _ = False
-    disambiguate "domWindowCSSSupports" [_, _] = "2"
-    disambiguate "htmlInputElementSetRangeText" [_, _, _, _] = "4"
-    disambiguate "htmlTextAreaElementSetRangeText" [_, _, _, _] = "4"
-    disambiguate "navigatorVibrate" [I.Param _ _ (I.TySequence _ _) _] = "Pattern"
-    disambiguate "audioContextCreateBuffer" [_, _] = "FromArrayBuffer"
-    disambiguate "audioNodeConnect" [I.Param _ _ (I.TyOptional (I.TyName "AudioParam" _)) _, _] = "Param"
-    disambiguate name (I.Param _ _ (I.TyName "DOMPath" _) _:_) | name `elem` canvasPathFunctionNames = "Path"
-    disambiguate "canvasRenderingContext2DSetStrokeColor" (I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
-    disambiguate "canvasRenderingContext2DSetStrokeColor" (I.Param _ (I.Id "r") _ _:_) = "RGB"
-    disambiguate "canvasRenderingContext2DSetStrokeColor" (I.Param _ (I.Id "c") _ _:_) = "CYMK"
-    disambiguate "canvasRenderingContext2DSetFillColor" (I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
-    disambiguate "canvasRenderingContext2DSetFillColor" (I.Param _ (I.Id "r") _ _:_) = "RGB"
-    disambiguate "canvasRenderingContext2DSetFillColor" (I.Param _ (I.Id "c") _ _:_) = "CYMK"
-    disambiguate "canvasRenderingContext2DSetShadow" (_:_:_:I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
-    disambiguate "canvasRenderingContext2DSetShadow" (_:_:_:I.Param _ (I.Id "r") _ _:_) = "RGB"
-    disambiguate "canvasRenderingContext2DSetShadow" (_:_:_:I.Param _ (I.Id "c") _ _:_) = "CYMK"
-    disambiguate "canvasRenderingContext2DDrawImage" [I.Param _ (I.Id "canvas") _ _,_,_] = "FromCanvas"
-    disambiguate "canvasRenderingContext2DDrawImage" [I.Param _ (I.Id "canvas") _ _,_,_,_,_] = "FromCanvasScaled"
-    disambiguate "canvasRenderingContext2DDrawImage" [I.Param _ (I.Id "canvas") _ _,_,_,_,_,_,_,_,_] = "FromCanvasPart"
-    disambiguate "canvasRenderingContext2DDrawImage" [I.Param _ (I.Id "video") _ _,_,_] = "FromVideo"
-    disambiguate "canvasRenderingContext2DDrawImage" [I.Param _ (I.Id "video") _ _,_,_,_,_] = "FromVideoScaled"
-    disambiguate "canvasRenderingContext2DDrawImage" [I.Param _ (I.Id "video") _ _,_,_,_,_,_,_,_,_] = "FromVideoPart"
-    disambiguate "canvasRenderingContext2DDrawImage" [_,_,_] = ""
-    disambiguate "canvasRenderingContext2DDrawImage" [_,_,_,_,_] = "Scaled"
-    disambiguate "canvasRenderingContext2DDrawImage" [_,_,_,_,_,_,_,_,_] = "Part"
-    disambiguate "canvasRenderingContext2DPutImageData" [_,_,_,_,_,_,_] = "Dirty"
-    disambiguate "canvasRenderingContext2DWebkitPutImageDataHD" [_,_,_,_,_,_,_] = "Dirty"
-    disambiguate "canvasRenderingContext2DCreatePattern" [I.Param _ (I.Id "canvas") _ _,_] = "FromCanvas"
-    disambiguate "canvasRenderingContext2DCreateImageData" [_,_] = "Size"
-    disambiguate "canvasRenderingContext2DSetLineWidth" _ = "Function"
-    disambiguate "canvasRenderingContext2DSetLineCap" _ = "Function"
-    disambiguate "canvasRenderingContext2DSetLineJoin" _ = "Function"
-    disambiguate "canvasRenderingContext2DSetMiterLimit" _ = "Function"
-    disambiguate "databaseCallbackHandleEvent" [I.Param _ _ (I.TyName "DatabaseSync" _) _] = "Sync"
-    disambiguate "dataTransferItemListAdd" [_] = "File"
-    disambiguate "mediaControlsHostSortedTrackListForMenu" [I.Param _ _ (I.TyName "AudioTrackList" _) _] = "Audio"
-    disambiguate "mediaControlsHostDisplayNameForTrack" [I.Param _ _ (I.TyName "AudioTrack" _) _] = "Audio"
-    disambiguate "rtcDataChannelSend" [I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
-    disambiguate "rtcDataChannelSend" [I.Param _ _ (I.TyName "Blob" _) _] = "Blob"
-    disambiguate "rtcDataChannelSend" [I.Param _ _ (I.TyName "DOMString" _) _] = "String"
-    disambiguate "webSocketSend" [I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
-    disambiguate "webSocketSend" [I.Param _ _ (I.TyName "Blob" _) _] = "Blob"
-    disambiguate "webSocketSend" [I.Param _ _ (I.TyName "DOMString" _) _] = "String"
-    disambiguate "sourceBufferAppendBuffer" [I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
-    disambiguate "webGLRenderingContextBufferData" [_, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _, _] = "View"
-    disambiguate "webGLRenderingContextBufferData" [_, I.Param _ _ (I.TyName "GLsizeiptr" _) _, _] = "Ptr"
-    disambiguate "webGLRenderingContextBufferSubData" [_, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
-    disambiguate "webGLRenderingContextTexImage2D" [_, _, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
-    disambiguate "webGLRenderingContextTexImage2D" [_, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ImageData" _)) _] = "Data"
-    disambiguate "webGLRenderingContextTexImage2D" [_, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLCanvasElement" _)) _] = "Canvas"
-    disambiguate "webGLRenderingContextTexImage2D" [_, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLVideoElement" _)) _] = "Video"
-    disambiguate "webGLRenderingContextTexSubImage2D" [_, _, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
-    disambiguate "webGLRenderingContextTexSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ImageData" _)) _] = "Data"
-    disambiguate "webGLRenderingContextTexSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLCanvasElement" _)) _] = "Canvas"
-    disambiguate "webGLRenderingContextTexSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLVideoElement" _)) _] = "Video"
-    disambiguate "domurlCreateObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaSource" _)) _] = "Source"
-    disambiguate "domurlCreateObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaStream" _)) _] = "Stream"
-    disambiguate "idbDatabaseTransaction" [I.Param _ (I.Id "storeNames") _ _, _] = "'"
-    disambiguate "idbIndexOpenCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
-    disambiguate "idbIndexOpenKeyCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
-    disambiguate "idbIndexGet" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
-    disambiguate "idbIndexGetKey" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
-    disambiguate "idbIndexCount" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
-    disambiguate "idbObjectStoreDelete" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
-    disambiguate "idbObjectStoreGet" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
-    disambiguate "idbObjectStoreOpenCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
-    disambiguate "idbObjectStoreCreateIndex" [_, I.Param _ _ (I.TySequence _ _) _, _] = "'"
-    disambiguate "idbObjectStoreCount" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
-    disambiguate name _ = ""
+    disambiguate "WebGLRenderingContextBase" a b = disambiguate "WebGLRenderingContext" a b
+    disambiguate "DOMWindowCSS" "supports" [_, _] = "2"
+    disambiguate "HTMLInputElement" "setRangeText" [_, _, _, _] = "4"
+    disambiguate "HTMLTextAreaElement" "setRangeText" [_, _, _, _] = "4"
+    disambiguate "Navigator" "vibrate" [I.Param _ _ (I.TySequence _ _) _] = "Pattern"
+    disambiguate "AudioContext" "createBuffer" [_, _] = "FromArrayBuffer"
+    disambiguate "AudioNode" "connect" [I.Param _ _ (I.TyOptional (I.TyName "AudioParam" _)) _, _] = "Param"
+    disambiguate "CanvasRenderingContext2D" name (I.Param _ _ (I.TyName "DOMPath" _) _:_) | name `elem` canvasPathFunctionNames = "Path"
+    disambiguate "CanvasRenderingContext2D" "setStrokeColor" (I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
+    disambiguate "CanvasRenderingContext2D" "setStrokeColor" (I.Param _ (I.Id "r") _ _:_) = "RGB"
+    disambiguate "CanvasRenderingContext2D" "setStrokeColor" (I.Param _ (I.Id "c") _ _:_) = "CYMK"
+    disambiguate "CanvasRenderingContext2D" "setFillColor" (I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
+    disambiguate "CanvasRenderingContext2D" "setFillColor" (I.Param _ (I.Id "r") _ _:_) = "RGB"
+    disambiguate "CanvasRenderingContext2D" "setFillColor" (I.Param _ (I.Id "c") _ _:_) = "CYMK"
+    disambiguate "CanvasRenderingContext2D" "setShadow" (_:_:_:I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
+    disambiguate "CanvasRenderingContext2D" "setShadow" (_:_:_:I.Param _ (I.Id "r") _ _:_) = "RGB"
+    disambiguate "CanvasRenderingContext2D" "setShadow" (_:_:_:I.Param _ (I.Id "c") _ _:_) = "CYMK"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [I.Param _ (I.Id "canvas") _ _,_,_] = "FromCanvas"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [I.Param _ (I.Id "canvas") _ _,_,_,_,_] = "FromCanvasScaled"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [I.Param _ (I.Id "canvas") _ _,_,_,_,_,_,_,_,_] = "FromCanvasPart"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [I.Param _ (I.Id "video") _ _,_,_] = "FromVideo"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [I.Param _ (I.Id "video") _ _,_,_,_,_] = "FromVideoScaled"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [I.Param _ (I.Id "video") _ _,_,_,_,_,_,_,_,_] = "FromVideoPart"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [_,_,_] = ""
+    disambiguate "CanvasRenderingContext2D" "drawImage" [_,_,_,_,_] = "Scaled"
+    disambiguate "CanvasRenderingContext2D" "drawImage" [_,_,_,_,_,_,_,_,_] = "Part"
+    disambiguate "CanvasRenderingContext2D" "putImageData" [_,_,_,_,_,_,_] = "Dirty"
+    disambiguate "CanvasRenderingContext2D" "webkitPutImageDataHD" [_,_,_,_,_,_,_] = "Dirty"
+    disambiguate "CanvasRenderingContext2D" "createPattern" [I.Param _ (I.Id "canvas") _ _,_] = "FromCanvas"
+    disambiguate "CanvasRenderingContext2D" "createImageData" [_,_] = "Size"
+    disambiguate "CanvasRenderingContext2D" "setLineWidth" _ = "Function"
+    disambiguate "CanvasRenderingContext2D" "setLineCap" _ = "Function"
+    disambiguate "CanvasRenderingContext2D" "setLineJoin" _ = "Function"
+    disambiguate "CanvasRenderingContext2D" "setMiterLimit" _ = "Function"
+    disambiguate "DataTransferItemList" "add" [_] = "File"
+    disambiguate "MediaControlsHost" "sortedTrackListForMenu" [I.Param _ _ (I.TyName "AudioTrackList" _) _] = "Audio"
+    disambiguate "MediaControlsHost" "displayNameForTrack" [I.Param _ _ (I.TyName "AudioTrack" _) _] = "Audio"
+    disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
+    disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "Blob" _) _] = "Blob"
+    disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "DOMString" _) _] = "String"
+    disambiguate "WebSocket" "send" [I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
+    disambiguate "WebSocket" "send" [I.Param _ _ (I.TyName "Blob" _) _] = "Blob"
+    disambiguate "WebSocket" "send" [I.Param _ _ (I.TyName "DOMString" _) _] = "String"
+    disambiguate "SourceBuffer" "appendBuffer" [I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
+    disambiguate "WebGL2RenderingContext" "getBufferSubData" [_, _, I.Param _ _ (I.TyName "ArrayBufferView" _) _] = "View"
+    disambiguate "WebGL2RenderingContext" "texSubImage3D" [_, _, _, _, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
+    disambiguate "WebGL2RenderingContext" "texSubImage3D" [_, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ImageData" _)) _] = "Data"
+    disambiguate "WebGL2RenderingContext" "texSubImage3D" [_, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLCanvasElement" _)) _] = "Canvas"
+    disambiguate "WebGL2RenderingContext" "texSubImage3D" [_, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLVideoElement" _)) _] = "Video"
+    disambiguate "WebGLRenderingContext" "bufferData" [_, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _, _] = "View"
+    disambiguate "WebGLRenderingContext" "bufferData" [_, I.Param _ _ (I.TyName "GLsizeiptr" _) _, _] = "Ptr"
+    disambiguate "WebGLRenderingContext" "bufferSubData" [_, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
+    disambiguate "WebGLRenderingContext" "texImage2D" [_, _, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
+    disambiguate "WebGLRenderingContext" "texImage2D" [_, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ImageData" _)) _] = "Data"
+    disambiguate "WebGLRenderingContext" "texImage2D" [_, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLCanvasElement" _)) _] = "Canvas"
+    disambiguate "WebGLRenderingContext" "texImage2D" [_, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLVideoElement" _)) _] = "Video"
+    disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ArrayBufferView" _)) _] = "View"
+    disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ImageData" _)) _] = "Data"
+    disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLCanvasElement" _)) _] = "Canvas"
+    disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLVideoElement" _)) _] = "Video"
+    disambiguate "DOMURL" "createObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaSource" _)) _] = "Source"
+    disambiguate "DOMURL" "createObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaStream" _)) _] = "Stream"
+    disambiguate "IDBDatabase" "transaction" [I.Param _ (I.Id "storeNames") _ _, _] = "'"
+    disambiguate "IDBIndex" "openCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
+    disambiguate "IDBIndex" "openKeyCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
+    disambiguate "IDBIndex" "get" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
+    disambiguate "IDBIndex" "getKey" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
+    disambiguate "IDBIndex" "count" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
+    disambiguate "IDBObjectStore" "delete" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
+    disambiguate "IDBObjectStore" "get" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
+    disambiguate "IDBObjectStore" "openCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
+    disambiguate "IDBObjectStore" "createIndex" [_, I.Param _ _ (I.TySequence _ _) _, _] = "'"
+    disambiguate "IDBObjectStore" "count" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _] = "Range"
+    disambiguate _ name _ = ""
     canvasPathFunctionNames = [
-        "canvasRenderingContext2DFill",
-        "canvasRenderingContext2DStroke",
-        "canvasRenderingContext2DClip",
-        "canvasRenderingContext2DIsPointInPath",
-        "canvasRenderingContext2DIsPointInStroke",
-        "canvasRenderingContext2DDrawFocusIfNeeded"]
+        "fill",
+        "stroke",
+        "clip",
+        "isPointInPath",
+        "isPointInStroke",
+        "drawFocusIfNeeded"]
 
-intf2meth _ _ = []
+intf2meth _ _ _ = []
 
 -- Create a Javascript body for a method. Template for a method is:
 -- method a1 ... an this = do
@@ -1282,8 +1316,6 @@ mkTIdent = H.HsTyVar . H.HsIdent
 -- A helper function to produce an export identifier.
 -- Datas (Txxx) export all their members.
 
-mkEIdent name@(n:_) | n `elem` ['T'] = (H.HsEThingAll . H.UnQual . H.HsIdent) name
-                    | otherwise = (H.HsEVar . H.UnQual . H.HsIdent) name
 
 
 mkTyList = H.HsTyApp (H.HsTyCon $ H.Special H.HsListCon)
@@ -1299,11 +1331,11 @@ tyRet' :: String -> [String] -> Bool -> I.Type -> H.HsType
 tyRet' _ enums ffi (I.TyName "object" Nothing) | ffi = H.HsTyApp (mkTIdent "JSRef") (mkTIdent "GObject")
                                                | otherwise = H.HsTyApp (mkTIdent "Maybe") (mkTIdent "GObject")
 tyRet' pname _ ffi (I.TyName "DOMString" Nothing) | ffi = mkTIdent "JSString"
-                                                  | otherwise = mkTIdent pname
+                                                  | otherwise = mkTIdent (paramName' pname)
 --tyRet ffi (I.TyOptional t) | ffi = tyRet ffi t
 --tyRet ffi (I.TyOptional t@(I.TyName c Nothing)) | isNothing (asIs ffi c) = tyRet ffi t
 --tyRet ffi (I.TyOptional t) | otherwise = H.HsTyApp (mkTIdent "Maybe") (tyRet ffi t)
-tyRet' pname enums False (I.TyOptional t@(I.TyName c Nothing)) | isNothing (asIs [] False c) = tyRet' pname enums False t
+tyRet' pname enums False (I.TyOptional t@(I.TyName c Nothing)) | isNothing (asIs [] (const False) False c) = tyRet' pname enums False t
 tyRet' pname enums False (I.TyOptional t) = H.HsTyApp (mkTIdent "Maybe") (tyRet' pname enums False t)
 --tyRet ffi (I.TySafeArray t) | ffi = H.HsTyApp (mkTIdent "JSRef") (mkTyList $ tyRet ffi t)
 --                            | otherwise = mkTyList (tyRet ffi t)
@@ -1313,7 +1345,9 @@ tyRet' pname enums False (I.TySafeArray t) = mkTyList (tyRet' pname enums False 
 tyRet' pname enums False (I.TySequence t _) = mkTyList (tyRet' pname enums False t)
 tyRet' _ _ True (I.TyName "GLintptr" Nothing) = mkTIdent "Double"
 tyRet' _ _ True (I.TyName "GLsizeiptr" Nothing) = mkTIdent "Double"
-tyRet' _ enums ffi (I.TyName c Nothing) = case (asIs enums ffi c) of
+tyRet' _ _ True (I.TyName "GLint64" Nothing) = mkTIdent "Double"
+tyRet' _ _ True (I.TyName "GLuint64" Nothing) = mkTIdent "Double"
+tyRet' _ enums ffi (I.TyName c Nothing) = case (asIs enums (const False) ffi c) of
   Nothing | ffi -> H.HsTyApp (mkTIdent "JSRef") (mkTIdent $ typeFor c)
   Nothing -> H.HsTyApp (mkTIdent "Maybe") (mkTIdent $ typeFor c)
   Just c' -> c'
@@ -1408,6 +1442,7 @@ fixEventName' "overconstrained" = "OverConstrained"
 fixEventName' "pagehide" = "PageHide"
 fixEventName' "pageshow" = "PageShow"
 fixEventName' "playbacktargetavailabilitychanged" = "PlaybackTargetAvailabilityChanged"
+fixEventName' "presentationmodechanged" = "PresentationModeChanged"
 fixEventName' "popstate" = "PopState"
 fixEventName' "ratechange" = "RateChange"
 fixEventName' "readystatechange" = "ReadyStateChange"
@@ -1634,14 +1669,15 @@ eventType _ "onboundary" = "Event"
 eventType _ "oncuechange" = "Event"
 eventType _ "onenter" = "Event"
 eventType _ "onexit" = "Event"
+eventType _ "onwebkitpresentationmodechanged" = "Event"
 eventType i e                                 = trace ("Please add:\neventType _ \"" ++ e ++ "\" = \"Event\"") e
 
-eventTyRet :: String -> String -> H.HsType
-eventTyRet interface eventName =
+eventTyRet :: (String -> Bool) -> String -> String -> H.HsType
+eventTyRet isLeaf interface eventName =
   H.HsTyApp
     (H.HsTyApp
       (mkTIdent "EventName")
-      (mkTIdent "self")
+      (tySelf isLeaf interface)
     )
     (mkTIdent $ eventType interface eventName)
 
@@ -1656,8 +1692,13 @@ eventTyRet interface eventName =
 
 -- Obtain a return type context (if any) from a return type
 
-ctxSelf :: String -> H.HsAsst
-ctxSelf t = (mkUIdent (classFor t),[mkTIdent "self"])
+ctxSelf :: (String -> Bool) -> String -> [H.HsAsst]
+ctxSelf isLeaf t | isLeaf t  = []
+                 | otherwise = [(mkUIdent (classFor t),[mkTIdent "self"])]
+
+tySelf :: (String -> Bool) -> String -> H.HsType
+tySelf isLeaf t | isLeaf t  = mkTIdent (typeFor t)
+                | otherwise = mkTIdent "self"
 
 ffiTySelf intf = H.HsTyApp (mkTIdent "JSRef") (mkTIdent (typeFor $ getDef intf))
 
@@ -1666,8 +1707,8 @@ ctxRet = ctxRet' "result"
 
 ctxRet' :: String -> I.Type -> [H.HsAsst]
 
-ctxRet' pname (I.TyName "DOMString" Nothing) = [(mkUIdent "FromJSString", [mkTIdent pname])]
-ctxRet' pname (I.TyName "XMLHttpRequestResponseType" Nothing) = [(mkUIdent "FromJSString", [mkTIdent pname])]
+ctxRet' pname (I.TyName "DOMString" Nothing) = [(mkUIdent "FromJSString", [mkTIdent (paramName' pname)])]
+--ctxRet' pname (I.TyName "XMLHttpRequestResponseType" Nothing) = [(mkUIdent "FromJSString", [mkTIdent (paramName pname)])]
 --ctxRet (I.TyName c Nothing) = case (asIs False c) of
 --  Nothing -> [(mkUIdent $ classFor c, [mkTIdent "self"])]
 --  Just c' -> []
@@ -1678,13 +1719,13 @@ ctxRet' pname _ = []
 
 -- Obtain a type signature from a parameter definition
 
-tyParm :: [String] -> I.Param -> (H.HsType, [H.HsAsst])
-tyParm enums = tyParm' enums False
+tyParm :: [String] -> (String -> Bool) -> I.Param -> (H.HsType, [H.HsAsst])
+tyParm enums isLeaf = tyParm' enums isLeaf False
 
-tyParmFFI :: [String] -> I.Param -> (H.HsType, [H.HsAsst])
-tyParmFFI enums = tyParm' enums True
+tyParmFFI :: [String] -> (String -> Bool) -> I.Param -> (H.HsType, [H.HsAsst])
+tyParmFFI enums isLeaf = tyParm' enums isLeaf True
 
-tyParm' enums ffi param@(I.Param optional (I.Id _) ptype [I.Mode In]) = lookup ptype where
+tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In]) = lookup ptype where
   p = mkTIdent (paramName param)
   lookup ptype =
    case ptype of
@@ -1706,7 +1747,9 @@ tyParm' enums ffi param@(I.Param optional (I.Id _) ptype [I.Mode In]) = lookup p
                                     | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSRef", [p])])
     I.TyName "GLintptr" Nothing | ffi -> (mkTIdent "Double",[])
     I.TyName "GLsizeiptr" Nothing | ffi -> (mkTIdent "Double",[])
-    I.TyName c Nothing -> case asIs enums ffi c of
+    I.TyName "GLint64" Nothing | ffi -> (mkTIdent "Double",[])
+    I.TyName "GLuint64" Nothing | ffi -> (mkTIdent "Double",[])
+    I.TyName c Nothing -> case asIs enums isLeaf ffi c of
       Just cc       -> (cc, [])
       Nothing | ffi -> (H.HsTyApp (mkTIdent "JSRef") (mkTIdent (typeFor c)), [])
       _             -> (H.HsTyApp (mkTIdent "Maybe") (p), [(mkUIdent $ classFor c, [p])])
@@ -1722,44 +1765,61 @@ tyParm' enums ffi param@(I.Param optional (I.Id _) ptype [I.Mode In]) = lookup p
                                        | otherwise -> (mkTIdent "Int64",[])
     I.TyApply _ (I.TyInteger _) -> (mkTIdent "Int",[])
     I.TyAny -> (mkTIdent "JSRef a",[])
-    _ | ffi -> let (hsType, hsAsst) = tyParm' enums False param in (H.HsTyApp (mkTIdent "JSRef") hsType, hsAsst)
+    _ | ffi -> let (hsType, hsAsst) = tyParm' enums isLeaf False param in (H.HsTyApp (mkTIdent "JSRef") hsType, hsAsst)
     t -> error $ "Param type " ++ (show t)
 
-tyParm' _ _ param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
+tyParm' _ _ _ param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
 
 glTypes = ["GLenum", "GLboolean", "GLbitfield", "GLbyte", "GLshort", "GLint", "GLsizei",
-           "GLintptr", "GLsizeiptr", "GLubyte", "GLushort", "GLuint", "GLfloat", "GLclampf"]
+           "GLintptr", "GLsizeiptr", "GLubyte", "GLushort", "GLuint", "GLfloat", "GLclampf",
+           "GLint64", "GLuint64"]
 
 -- Some types pass through as is, other are class names
 
-asIs :: [String] -> Bool -- ^ Is JSFFI call
+asIs :: [String] -> (String -> Bool) -> Bool -- ^ Is JSFFI call
     -> String -> Maybe H.HsType
 
-asIs enums ffi a | a `elem` enums = Just $ if ffi then H.HsTyApp (mkTIdent  "JSRef") (mkTIdent a) else mkTIdent a
-asIs _ _ "DOMString"            = Just $ mkTIdent "String"
-asIs _ _ "DOMTimeStamp"         = Just $ mkTIdent "Word"
-asIs _ _ "CompareHow"           = Just $ mkTIdent "Word"
-asIs _ _ x | x `elem` glTypes   = Just $ mkTIdent x
+asIs enums _ ffi a  | a `elem` enums = Just $ if ffi then H.HsTyApp (mkTIdent  "JSRef") (mkTIdent a) else mkTIdent a
+asIs _ isLeaf ffi a | isLeaf a       = Just $ if ffi then H.HsTyApp (mkTIdent  "JSRef") (mkTIdent a) else H.HsTyApp (mkTIdent "Maybe") (mkTIdent a)
+asIs _ _ _ "DOMString"               = Just $ mkTIdent "String"
+asIs _ _ _ "DOMTimeStamp"            = Just $ mkTIdent "Word"
+asIs _ _ _ "CompareHow"              = Just $ mkTIdent "Word"
+asIs _ _ _ x | x `elem` glTypes      = Just $ mkTIdent x
 -- asIs True "Bool"      = Just "JSBool"
-asIs _ _ "Bool"                 = Just $ mkTIdent "Bool"
-asIs _ _ "Int"                  = Just $ mkTIdent "Int"
-asIs _ _ _                      = Nothing
+asIs _ _ _ "Bool"                    = Just $ mkTIdent "Bool"
+asIs _ _ _ "Int"                     = Just $ mkTIdent "Int"
+asIs _ _ _ _                         = Nothing
 
-paramName (I.Param _ (I.Id "data") _ _)  = "data'"
-paramName (I.Param _ (I.Id "type") _ _)  = "type'"
-paramName (I.Param _ (I.Id "where") _ _) = "where'"
-paramName (I.Param _ (I.Id "family") _ _) = "family'"
-paramName (I.Param _ (I.Id p) _ _) = p
+paramName (I.Param _ (I.Id p) _ _) = paramName' p
+
+paramName' "data"    = "data'"
+paramName' "pattern" = "pattern'"
+paramName' "type"    = "type'"
+paramName' "where"   = "where'"
+paramName' "family"  = "family'"
+paramName' p = p
 
 -- Apply a parameter to a FFI call
 
-applyParam :: [String] -> I.Param -> H.HsExp -> H.HsExp
+applySelf isLeaf iid call | isLeaf iid = H.HsApp call . H.HsParen $
+                                                    H.HsApp
+                                                        (H.HsVar . H.UnQual . H.HsIdent $ "un" ++ typeFor iid)
+                                                        (H.HsVar . H.UnQual $ H.HsIdent "self")
+                          | otherwise = H.HsApp call . H.HsParen $
+                                            H.HsApp
+                                                (H.HsVar . H.UnQual . H.HsIdent $ "un" ++ typeFor iid)
+                                                (H.HsParen $
+                                                    H.HsApp
+                                                        (H.HsVar . H.UnQual . H.HsIdent $ "to" ++ typeFor iid)
+                                                        (H.HsVar . H.UnQual $ H.HsIdent "self"))
 
-applyParam enums param@(I.Param optional (I.Id p) ptype [I.Mode In]) call = lookup ptype where
+applyParam :: [String] -> (String -> Bool) -> I.Param -> H.HsExp -> H.HsExp
+
+applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In]) call = lookup ptype where
   pname = mkVar $ paramName param
   lookup ptype =
    case ptype of
-    I.TyOptional t@(I.TyName c Nothing) | isNothing (asIs [] False c) -> lookup t
+    I.TyOptional t@(I.TyName c Nothing) | isNothing (asIs [] (const False) False c) -> lookup t
     I.TyOptional (I.TyName "DOMString" Nothing) ->
       H.HsApp
         call
@@ -1839,6 +1899,8 @@ applyParam enums param@(I.Param optional (I.Id p) ptype [I.Mode In]) call = look
     I.TyName "CompareHow" Nothing -> H.HsApp call pname
     I.TyName "GLintptr" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyName "GLsizeiptr" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
+    I.TyName "GLint64" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
+    I.TyName "GLuint64" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar $ "fromIntegral") pname)
     I.TyName x Nothing | x `elem` glTypes -> H.HsApp call pname
     I.TyName "Bool" Nothing -> H.HsApp call pname
     I.TyName x Nothing | x `elem` enums ->
@@ -1850,7 +1912,22 @@ applyParam enums param@(I.Param optional (I.Id p) ptype [I.Mode In]) call = look
             pname
           )
         )
-    I.TyName x Nothing ->
+    I.TyName x Nothing | isLeaf x ->
+      H.HsApp
+        call
+        (H.HsParen
+          (H.HsApp
+            (H.HsApp
+              (H.HsApp
+                (mkVar "maybe")
+                (mkVar "jsNull")
+              )
+              (mkVar $ "un" ++ typeFor x)
+            )
+            pname
+          )
+        )
+                       | otherwise ->
       H.HsApp
         call
         (H.HsParen
@@ -1881,7 +1958,7 @@ applyParam enums param@(I.Param optional (I.Id p) ptype [I.Mode In]) call = look
     I.TyAny -> H.HsApp call pname
     t -> error $ "Apply Param type " ++ (show t)
 
-applyParam _ param@(I.Param _ _ _ _) _ = error $ "Unsupported parameter attributes " ++ show param
+applyParam _ _ param@(I.Param _ _ _ _) _ = error $ "Unsupported parameter attributes " ++ show param
 
 returnType :: [String] ->  I.Type -> H.HsExp -> H.HsExp
 returnType _ (I.TyName "DOMString" Nothing) e = H.HsApp (H.HsApp (mkVar "fromJSString") (mkVar "<$>")) (H.HsParen e)
@@ -1891,6 +1968,8 @@ returnType _ (I.TyName "DOMTimeStamp" Nothing) e = e
 returnType _ (I.TyName "CompareHow" Nothing) e = e
 returnType _ (I.TyName "GLintptr" Nothing) e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
 returnType _ (I.TyName "GLsizeiptr" Nothing) e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyName "GLint64" Nothing) e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyName "GLuint64" Nothing) e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
 returnType _ (I.TyName x Nothing) e | x `elem` glTypes = e
 returnType _(I.TyName "Bool" Nothing) e = e
 returnType enums (I.TyName x Nothing) e | x `elem` enums =
