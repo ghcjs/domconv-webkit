@@ -21,7 +21,7 @@ Description:    This package provides executables that WebKit IDL files to Haske
 Build-Type:     Simple
 Build-Depends:  base >= 4, filepath, mtl, utf8-string, directory,
                 process, array, containers, haskell-src, cpphs, WebBits == 2.2,
-                jmacro >=0.6.8 && <0.7, split
+                jmacro >=0.6.8 && <0.7, split, text >=1.2.0.4 && <1.3
 
 Data-Dir:       W3C/DOM2
 Data-Files:     COPYRIGHT.html, idl/*.idl, pkg/Setup.hs, pkg/wbt.hs_unsplit,
@@ -61,7 +61,7 @@ Executable:     domconv-webkit
 Main-is:        domconv-webkit.hs
 Hs-source-dirs: ., hdirect-0.21
 Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
-                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils, Common
 
 Extensions:     ScopedTypeVariables
 
@@ -69,7 +69,7 @@ Executable:     domconv-webkit-js
 Main-is:        domconv-webkit-js.hs
 Hs-source-dirs: ., hdirect-0.21
 Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
-                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils, Common
 
 Extensions:     ScopedTypeVariables
 
@@ -77,6 +77,6 @@ Executable:     domconv-webkit-jsffi
 Main-is:        domconv-webkit-jsffi.hs
 Hs-source-dirs: ., hdirect-0.21
 Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
-                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils, Common
 
 Extensions:     ScopedTypeVariables
