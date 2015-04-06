@@ -40,7 +40,7 @@ inWebKitGtk = (`elem` ["Attr", "AudioTrack", "AudioTrackList", "BarProp", "Batte
                     "DOMNamedFlowCollection", "DOMPlugin", "DOMPluginArray", "DOMRange", "DOMScreen", "DOMSecurityPolicy",
                     "DOMSelection", "DOMSettableTokenList", "DOMStringList", "DOMTokenList",
                     "DOMWindow", "DOMWindowCSS", "Document", "DocumentFragment", "DocumentType",
-                    "Element", "EntityReference", "Event", "EventTarget", "EventTargetClosures", "Events", "File",
+                    "Element", "EntityReference", "Enums", "Event", "EventTarget", "EventTargetClosures", "Events", "File",
                     "FileList", "Geolocation", "HTMLAnchorElement", "HTMLAppletElement",
                     "HTMLAreaElement", "HTMLAudioElement", "HTMLBRElement", "HTMLBaseElement", "HTMLBaseFontElement",
                     "HTMLBodyElement", "HTMLButtonElement", "HTMLCanvasElement", "HTMLCollection",

@@ -190,8 +190,9 @@ putSplit (mod@(H.HsModule _ modid _ _ _), comment) = do
       fixMods l = l
 
   createDirectoryIfMissing True (concat $ intersperse "/" $ init components)
+  let ext = if last components == "Enums" then ".hs" else ".chs"
   when (inWebKitGtk (last components)) $
-      Prelude.writeFile ((concat $ intersperse "/" components) ++ ".chs") . unlines . map fixMods . lines $ prettyJS mod comment
+      Prelude.writeFile ((concat $ intersperse "/" components) ++ ext) . unlines . map fixMods . lines $ prettyJS mod comment
 
 
 prettyJS (H.HsModule pos (H.Module m) (Just exports) imp decls) comment = fixRenamedFunctions $
@@ -370,6 +371,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = submods where
   declname (H.HsInstDecl _ _ (H.UnQual (H.HsIdent s)) _ _) = s
   declname _ = ""
   mkEIdent (H.HsDataDecl _ _ (H.HsIdent s) _ _ _) = H.HsEThingAll . H.UnQual $ H.HsIdent s
+  mkEIdent (H.HsClassDecl _ _ (H.HsIdent s) _ _) = H.HsEThingAll . H.UnQual $ H.HsIdent s
   mkEIdent decl = H.HsEVar . H.UnQual . H.HsIdent $ declname decl
   mtsigs = filter (not . null . nsOf) (reverse decls)
   corrn = drop 1 . dropWhile (/= '|') . drop 1 . dropWhile (/= '|')
@@ -411,12 +413,11 @@ splitModule (H.HsModule _ modid mbexp imps decls) = submods where
                     , "Control.Applicative ((<$>))"
                     , "Control.Monad (void)"
                     , "Control.Monad.IO.Class (MonadIO(..))"
-                    , "Graphics.UI.Gtk.WebKit.Types"
                     , "System.Glib.GError"
                     , "Graphics.UI.Gtk.WebKit.DOM.EventTargetClosures"
                     ] ++ if name == "Enums"
                             then []
-                            else eventImp iid ++ ["Graphics.UI.Gtk.WebKit.DOM.Enums"]))
+                            else eventImp iid ++ ["Graphics.UI.Gtk.WebKit.Types", "Graphics.UI.Gtk.WebKit.DOM.Enums"]))
                (H.HsFunBind [] : map fst smdecls), comment) where
       renameMap :: M.Map String String
       renameMap = M.fromList $ concatMap snd smdecls
@@ -827,7 +828,7 @@ intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
     mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") [] `elem` ext = []
     mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") [] `elem` ext = []
     mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomGetter") [] `elem` ext = []
-    mkattr (I.Attribute [I.Id iat] _ (I.TyName "EventListener" _) _ _) = trace (getDef intf ++ " " ++ iat) $ mkevent iid iat
+    mkattr (I.Attribute [I.Id iat] _ (I.TyName "EventListener" _) _ _) = mkevent iid iat
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
       (if I.ExtAttr (I.Id "Replaceable") [] `elem` ext
         then []
