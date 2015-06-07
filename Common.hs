@@ -5,22 +5,26 @@ import Debug.Trace (trace)
 import qualified Utils as U
 import qualified IDLSyn as I
 
-jsname "CryptoKey" = "Key"
-jsname "CryptoKeyPair" = "KeyPair"
+jsname' "DOMApplicationCache" = "ApplicationCache"
+jsname' "DOMWindowCSS" = "CSS"
+jsname' "DOMCoreException" = "DOMException"
+jsname' "DOMFormData" = "FormData"
+jsname' "DOMURL" = "URL"
+jsname' "DOMSecurityPolicy" = "SecurityPolicy"
+jsname' "DOMSelection" = "Selection"
+jsname' "DOMWindow" = "Window"
+jsname' "DOMMimeType" = "MimeType"
+jsname' "DOMMimeTypeArray" = "MimeTypeArray"
+jsname' "DOMPlugin" = "Plugin"
+jsname' "DOMPluginArray" = "PluginArray"
+jsname' "DOMPath" = "Path2D"
+jsname' x = x
+
+--jsname "CryptoKey" = "Key"
+--jsname "CryptoKeyPair" = "KeyPair"
 jsname "SubtleCrypto" = "WebKitSubtleCrypto"
-jsname "DOMWindowCSS" = "CSS"
-jsname "DOMCoreException" = "DOMException"
 jsname "DOMNamedFlowCollection" = "WebKitNamedFlowCollection"
-jsname "DOMFormData" = "FormData"
-jsname "DOMURL" = "URL"
 jsname "MediaKeyError" = "WebKitMediaKeyError"
-jsname "DOMSecurityPolicy" = "SecurityPolicy"
-jsname "DOMSelection" = "Selection"
-jsname "DOMWindow" = "Window"
-jsname "DOMMimeType" = "MimeType"
-jsname "DOMMimeTypeArray" = "MimeTypeArray"
-jsname "DOMPlugin" = "Plugin"
-jsname "DOMPluginArray" = "PluginArray"
 jsname "MediaKeyMessageEvent" = "WebKitMediaKeyMessageEvent"
 jsname "MediaKeySession" = "WebKitMediaKeySession"
 jsname "MediaKeys" = "WebKitMediaKeys"
@@ -29,17 +33,16 @@ jsname "RTCPeerConnection" = "webkitRTCPeerConnection"
 --jsname "AudioContext" = "webkitAudioContext"
 --jsname "OfflineAudioContext" = "webkitOfflineAudioContext"
 jsname "PannerNode" = "webkitAudioPannerNode"
-jsname "DOMPath" = "Path2D"
 jsname "DataCue" = "WebKitDataCue"
-jsname x = x
+jsname x = jsname' x
 
 inWebKitGtk = (`elem` ["Attr", "AudioTrack", "AudioTrackList", "BarProp", "BatteryManager", "Blob",
                     "CDATASection", "Comment", "CSSRule", "CSSRuleList", "CSSStyleDeclaration",
                     "CSSStyleSheet", "CSSValue", "CharacterData", "Console", "Core", "Css",
-                    "DOMAttr", "DOMApplicationCache", "DOMImplementation", "DOMMimeType", "DOMMimeTypeArray",
-                    "DOMNamedFlowCollection", "DOMPlugin", "DOMPluginArray", "DOMRange", "DOMScreen", "DOMSecurityPolicy",
-                    "DOMSelection", "DOMSettableTokenList", "DOMStringList", "DOMTokenList",
-                    "DOMWindow", "DOMWindowCSS", "Document", "DocumentFragment", "DocumentType",
+                    "Attr", "ApplicationCache", "DOMImplementation", "MimeType", "MimeTypeArray",
+                    "DOMNamedFlowCollection", "Plugin", "PluginArray", "Range", "Screen", "SecurityPolicy",
+                    "Selection", "DOMSettableTokenList", "DOMStringList", "DOMTokenList",
+                    "Window", "CSS", "Document", "DocumentFragment", "DocumentType",
                     "Element", "EntityReference", "Enums", "Event", "EventTarget", "EventTargetClosures", "Events", "File",
                     "FileList", "Geolocation", "HTMLAnchorElement", "HTMLAppletElement",
                     "HTMLAreaElement", "HTMLAudioElement", "HTMLBRElement", "HTMLBaseElement", "HTMLBaseFontElement",
@@ -68,9 +71,9 @@ inWebKitGtk = (`elem` ["Attr", "AudioTrack", "AudioTrackList", "BarProp", "Batte
                     "WebKitAnimationList", "WebKitNamedFlow", "WebKitPoint", "WheelEvent",
                     "XPathExpression", "XPathNSResolver", "XPathResult", "Xml", "Xpath"])
 
-fixEventName "DOMWindow" "onblur" = "BlurEvent"
-fixEventName "DOMWindow" "onfocus" = "FocusEvent"
-fixEventName "DOMWindow" "onscroll" = "ScrollEvent"
+fixEventName "Window" "onblur" = "BlurEvent"
+fixEventName "Window" "onfocus" = "FocusEvent"
+fixEventName "Window" "onscroll" = "ScrollEvent"
 fixEventName "Element" "onblur" = "BlurEvent"
 fixEventName "Element" "onfocus" = "FocusEvent"
 fixEventName "FileReader" "onabort" = "AbortEvent"
@@ -181,7 +184,7 @@ eventType _ "onaudioprocess" = "AudioProcessingEvent"
 eventType _ "onbeforeprint" = "Event"
 eventType _ "onbeforeunload" = "BeforeUnloadEvent"
 eventType _ "onbeginEvent" = "TimeEvent"
-eventType _ "onblocked" = "Event"
+eventType _ "onblocked" = "IDBVersionChangeEvent"
 eventType _ "onblur" = "FocusEvent"
 eventType _ "oncached" = "Event"
 eventType _ "oncanplay" = "Event"
@@ -313,7 +316,7 @@ eventType _ "onwebkittransitionend" = "TransitionEvent"
 eventType _ "ontransitionend" = "TransitionEvent"
 eventType _ "onunload" = "UIEvent"
 eventType _ "onupdateready" = "Event"
-eventType _ "onupgradeneeded" = "Event"
+eventType _ "onupgradeneeded" = "IDBVersionChangeEvent"
 eventType _ "onuserproximity" = "SensorEvent"
 eventType _ "onversionchange" = "IDBVersionChangeEvent"
 eventType _ "onvisibilitychange" = "Event"
@@ -379,13 +382,13 @@ paramName' "family"  = "family'"
 paramName' p = p
 
 disambiguate "WebGLRenderingContextBase" a b = disambiguate "WebGLRenderingContext" a b
-disambiguate "DOMWindowCSS" "supports" [_, _] = "2"
+disambiguate "CSS" "supports" [_, _] = "2"
 disambiguate "HTMLInputElement" "setRangeText" [_, _, _, _] = "4"
 disambiguate "HTMLTextAreaElement" "setRangeText" [_, _, _, _] = "4"
 disambiguate "Navigator" "vibrate" [I.Param _ _ (I.TySequence _ _) _] = "Pattern"
 disambiguate "AudioContext" "createBuffer" [_, _] = "FromArrayBuffer"
 disambiguate "AudioNode" "connect" [I.Param _ _ (I.TyOptional (I.TyName "AudioParam" _)) _, _] = "Param"
-disambiguate "CanvasRenderingContext2D" name (I.Param _ _ (I.TyName "DOMPath" _) _:_) | name `elem` canvasPathFunctionNames = "Path"
+disambiguate "CanvasRenderingContext2D" name (I.Param _ _ (I.TyName "Path2D" _) _:_) | name `elem` canvasPathFunctionNames = "Path"
 disambiguate "CanvasRenderingContext2D" "setStrokeColor" (I.Param _ (I.Id "grayLevel") _ _:_) = "Gray"
 disambiguate "CanvasRenderingContext2D" "setStrokeColor" (I.Param _ (I.Id "r") _ _:_) = "RGB"
 disambiguate "CanvasRenderingContext2D" "setStrokeColor" (I.Param _ (I.Id "c") _ _:_) = "CYMK"
@@ -438,8 +441,8 @@ disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, _, _, I.
 disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "ImageData" _)) _] = "Data"
 disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLCanvasElement" _)) _] = "Canvas"
 disambiguate "WebGLRenderingContext" "texSubImage2D" [_, _, _, _, _, _, I.Param _ _ (I.TyOptional (I.TyName "HTMLVideoElement" _)) _] = "Video"
-disambiguate "DOMURL" "createObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaSource" _)) _] = "Source"
-disambiguate "DOMURL" "createObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaStream" _)) _] = "Stream"
+disambiguate "URL" "createObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaSource" _)) _] = "Source"
+disambiguate "URL" "createObjectURL" [I.Param _ _ (I.TyOptional (I.TyName "MediaStream" _)) _] = "Stream"
 disambiguate "IDBDatabase" "transaction" [I.Param _ (I.Id "storeNames") _ _, _] = "'"
 disambiguate "IDBIndex" "openCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"
 disambiguate "IDBIndex" "openKeyCursor" [I.Param _ _ (I.TyOptional (I.TyName "IDBKeyRange" _)) _, _] = "Range"

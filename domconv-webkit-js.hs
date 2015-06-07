@@ -4,13 +4,12 @@
 
 module Main where
 
-import Prelude hiding (putStrLn, readFile)
-import System.Environment.UTF8
+import Prelude
 import System.Directory
+import System.Environment
 import System.FilePath
 import System.Exit
-import System.IO (stderr, openFile, hClose, IOMode (..))
-import System.IO.UTF8
+import System.IO (stderr, openFile, hClose, IOMode (..), hPutStrLn)
 import Control.Monad
 import Data.Maybe
 import Data.Either

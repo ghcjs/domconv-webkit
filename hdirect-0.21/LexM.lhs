@@ -199,13 +199,17 @@ thenLexM (LexM m) n =
 returnLexM :: a -> LexM a
 returnLexM v = LexM (\ _ st -> return (v, st) )
 
-{- UNUSED
 mapLexM :: (a -> b) -> LexM a -> LexM b
 mapLexM f (LexM m) =
  LexM (\ env st -> do
    (x,st1) <- m env st
    return (f x, st1))
--}
+
+instance Functor LexM where
+  fmap = mapLexM
+
+instance Applicative LexM where
+  pure = returnLexM
 
 instance Monad LexM where
   (>>=)  = thenLexM

@@ -1,16 +1,16 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- DOM interface converter: a tool to convert Haskell files produced by
 -- H/Direct into properly structured DOM wrapper
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
-import Prelude hiding (putStrLn, readFile)
-import System.Environment.UTF8
+import Prelude
 import System.Directory
+import System.Environment
 import System.FilePath
 import System.Exit
-import System.IO (stderr, openFile, hClose, IOMode (..))
-import System.IO.UTF8
+import System.IO (stderr, openFile, hClose, IOMode (..), hPutStrLn)
 import Control.Monad
 import Data.Maybe
 import Data.Either
@@ -29,7 +29,8 @@ import qualified OmgParser
 import LexM
 import Literal
 import qualified IDLSyn as I
-import IDLUtils
+import qualified IDLUtils
+import IDLUtils hiding (getDef)
 import BasicTypes
 import SplitBounds
 import Paths_domconv_webkit
@@ -39,6 +40,19 @@ import Data.Monoid ((<>))
 import Debug.Trace
 import Data.List.Split
 import Common
+
+getDef = jsname' . IDLUtils.getDef
+
+webkitType "CSS" = "DOMWindowCSS"
+webkitType "Window" = "DOMWindow"
+webkitType "ApplicationCache" = "DOMApplicationCache"
+webkitType "MimeType" = "DOMMimeType"
+webkitType "MimeTypeArray" = "DOMMimeTypeArray"
+webkitType "Plugin" = "DOMPlugin"
+webkitType "PluginArray" = "DOMPluginArray"
+webkitType "SecurityPolicy" = "DOMSecurityPolicy"
+webkitType "Selection" = "DOMSelection"
+webkitType t = t
 
 main = do
   putStrLn "domconv-webkit : Makes Gtk2Hs Haskell bindings for webkitgtk"
@@ -74,8 +88,8 @@ makeWebkitBindings idl args = do
                 case M.lookup parent reversedMap of
                     Just s -> do
                         forM_ (S.toList s) $ \child -> do
-                            hPutStrLn hh $ replicate n ' ' ++ "WebKitDOM" ++ child ++ " as " ++ typeFor child
-                                    ++ ", webkit_dom_" ++ map toLower (underscore child) ++ "_get_type if " ++ guard (typeFor child)
+                            hPutStrLn hh $ replicate n ' ' ++ "WebKitDOM" ++ webkitType child ++ " as " ++ typeFor child
+                                    ++ ", webkit_dom_" ++ map toLower (underscore $ webkitType child) ++ "_get_type if " ++ guard (typeFor child)
                             hierarchy (n+4) child
                     _ -> return ()
         hierarchy 8 ""
@@ -84,8 +98,8 @@ makeWebkitBindings idl args = do
         renameFile (hierarchyFile ++ ".new") hierarchyFile
     guard "BarProp" = "webkitgtk-2.2"
     guard "DOMNamedFlowCollection" = "webkitgtk-2.2"
-    guard "DOMSecurityPolicy" =  "webkitgtk-1.10"
-    guard "DOMWindowCSS" = "webkitgtk-2.2"
+    guard "SecurityPolicy" =  "webkitgtk-1.10"
+    guard "WindowCSS" = "webkitgtk-2.2"
     guard "KeyboardEvent" = "webkitgtk-2.2"
     guard "StorageInfo" = "webkitgtk-1.10"
     guard _ = "webkit-dom"
@@ -98,7 +112,7 @@ processIDL idl args = do
       exitWith (ExitFailure 1)
     Right opts -> procopts idl opts
 
-interfaceName "AbstractView" = "DOMWindow"
+interfaceName "AbstractView" = "Window"
 interfaceName n = n
 
 procopts idl opts = do
@@ -556,15 +570,15 @@ data DOMState = DOMState {
 -- Helpers to produce class and datatype identifiers out of DOM identifiers
 
 classFor s = typeFor s ++ "Class"
-typeFor  "Range" = "DOMRange"
-typeFor  "Screen" = "DOMScreen"
-typeFor  "Attr" = "DOMAttr"
+--typeFor  "Range" = "DOMRange"
+--typeFor  "Screen" = "DOMScreen"
+--typeFor  "Attr" = "DOMAttr"
 typeFor  "Key" = "CryptoKey"
 typeFor  "AlgorithmIdentifier" = "DOMString"
 typeFor  "KeyFormat" = "DOMString"
 -- typeFor  "XMLHttpRequestResponseType" = "DOMString"
 typeFor  "custom" = "CanvasStyle"
-typeFor  s = s
+typeFor  s = jsname' s
 fixType (I.TyName s x) = I.TyName (typeFor s) x
 fixType (I.TyOptional a) = I.TyOptional (fixType a)
 fixType x = x
@@ -811,8 +825,9 @@ tagFor _ = ""
 
 intf2attr :: [String] -> I.Defn -> [H.HsDecl]
 
-intf2attr enums intf@(I.Interface (I.Id iid) _ cldefs _ _) =
+intf2attr enums intf@(I.Interface (I.Id iid') _ cldefs _ _) =
   concat $ map mkattr $ collectAttrs intf where
+    iid = jsname' iid'
     mkattr (I.Attribute [] _ _ _ _) = []
     mkattr (I.Attribute _ _ (I.TyName "MediaQueryListListener" _) _ _) = []
     mkattr (I.Attribute _ _ (I.TyName "Crypto" _) _ _) = []
@@ -1041,7 +1056,7 @@ intf2meth enums intf@(I.Interface _ _ cldefs _ _) =
     skip (I.Operation (I.FunId (I.Id "dispatchEvent") _ _) _ _ _ _) = getDef intf /= "EventTarget"
     skip op@(I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm || excludedMeth (getDef intf) (getDef op) parm
     excludedMeth "Document" "exitPointerLock" _ = True
-    excludedMeth "DOMWindowCSS" "supports" [_] = True
+    excludedMeth "CSS" "supports" [_] = True
     excludedMeth "HTMLInputElement" "setRangeText" [_] = True
     excludedMeth "HTMLTextAreaElement" "setRangeText" [_] = True
     excludedMeth "KeyboardEvent" "initKeyboardEvent" [_,_,_,_,_,_,_,_,_,_] = True
@@ -1361,7 +1376,7 @@ gtkName "TextTrack" "addCue" = "webkit_dom_text_track_add_cue_with_error"
 gtkName "EventTarget" "addEventListener" = "event_target_add_event_listener_with_closure"
 gtkName "EventTarget" "removeEventListener" = "event_target_remove_event_listener_with_closure"
 gtkName i s =
-    let lower = map toLower (U.toUnderscoreCamel i) ++ "_" ++ map toLower (U.toUnderscoreCamel s) in
+    let lower = map toLower (U.toUnderscoreCamel $ webkitType i) ++ "_" ++ map toLower (U.toUnderscoreCamel s) in
     case stripPrefix "htmli_" lower of
         Just rest -> "html_i"++rest
         Nothing   -> case stripPrefix "x_path" lower of
