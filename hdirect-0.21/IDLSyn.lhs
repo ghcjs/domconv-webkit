@@ -141,7 +141,7 @@ type CoClassMember = (Bool, Id, [Attribute])
 data Optionality = Optional | Required deriving ( Eq, Show )
 
 data Param      = Param Optionality Id Type [Attribute]
-		  deriving ( Eq, Show )
+                  deriving ( Eq, Show )
 
 type Member     = (Type, [Attribute], [Id])
 
@@ -162,9 +162,9 @@ data ExtAttribute
    deriving ( Eq, Show )
 
 data Switch    = Switch [CaseLabel] (Maybe SwitchArm) 
-		 deriving ( Eq, Show )
+                 deriving ( Eq, Show )
 data CaseLabel = Case [Expr] | Default
-		 deriving ( Eq, Show )
+                 deriving ( Eq, Show )
 
 -- switch arms can have attributes along with type and
 -- declarator, just as proc. params.

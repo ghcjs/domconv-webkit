@@ -12,10 +12,10 @@ import BasicTypes
 import Literal
 import SrcLoc
 import Opts ( optCompilingDceIDL
-	    , optCompilingMsIDL
-	    , optCompilingOmgIDL
-	    , optJNI
-	    )
+            , optCompilingMsIDL
+            , optCompilingOmgIDL
+            , optJNI
+            )
 \end{code}
 
 Tedious type giving all the lexemes that are
@@ -104,7 +104,7 @@ data IDLToken
  | T_getter
  | T_setter
  | T_fixed
- | T_idl_type	Type
+ | T_idl_type   Type
  | T_type       String
  | T_literal    Literal
  | T_string_lit String
@@ -149,7 +149,7 @@ idlKeywords
   | optCompilingDceIDL = dce_keywords
   | optCompilingMsIDL  = midl_keywords
   | optCompilingOmgIDL = omg_keywords
-  | otherwise	       = omg_keywords
+  | otherwise          = omg_keywords
 
 -- keywords shared by all the IDL dialects we support.
 std_idl_keywords :: [(String, IDLToken)]
@@ -158,20 +158,20 @@ std_idl_keywords =
         (("Object",   T_idl_type TyObject):)
      else
         id)
-    [ ("boolean",	T_type "bool")
+    [ ("boolean",       T_type "bool")
     , ("case",          T_case)
     , ("char",          T_char)
-    , ("const",  	T_const)
-    , ("default",  	T_default)
-    , ("double",  	T_float Long)
-    , ("enum",		T_enum)
-    , ("float",  	T_float Short)
-    , ("in",  	        T_mode In)
-    , ("optional",  	T_optional)
+    , ("const",         T_const)
+    , ("default",       T_default)
+    , ("double",        T_float Long)
+    , ("enum",          T_enum)
+    , ("float",         T_float Short)
+    , ("in",            T_mode In)
+    , ("optional",      T_optional)
     , ("unrestricted",  T_unrestricted)
-    , ("interface",	T_interface)
-    , ("implements",	T_implements)
-    , ("import",	T_import)
+    , ("interface",     T_interface)
+    , ("implements",    T_implements)
+    , ("import",        T_import)
     , ("long",          T_int Long)
     , ("int",           T_int Natural)
     , ("module",        T_module)
@@ -181,28 +181,28 @@ std_idl_keywords =
     , ("sizeof",        T_sizeof)
     , ("struct",        T_struct)
     , ("switch",        T_switch)
-    , ("typedef",	T_typedef)
+    , ("typedef",       T_typedef)
     , ("unsigned",      T_unsigned)
-    , ("union",		T_union)
-    , ("void",		T_void)
-    , ("wchar",		T_wchar)
-    , ("wstring",	T_wstring)
+    , ("union",         T_union)
+    , ("void",          T_void)
+    , ("wchar",         T_wchar)
+    , ("wstring",       T_wstring)
     , ("FALSE",         T_literal (BooleanLit False))
     , ("TRUE",          T_literal (BooleanLit True))
-    , ("NULL",		T_literal NullLit)
-    , ("byte",		T_int Byte)
-    , ("octet",		T_uint Byte)
-    , ("stablePtr",	T_idl_type TyStable)
-    , ("extern",	T_extern)
+    , ("NULL",          T_literal NullLit)
+    , ("byte",          T_int Byte)
+    , ("octet",         T_uint Byte)
+    , ("stablePtr",     T_idl_type TyStable)
+    , ("extern",        T_extern)
           -- FIXME: normalise callconv naming with cpp
-    , ("__stdcall",	T_callconv Stdcall)  
-    , ("__stdcall__",	T_callconv Stdcall)  
-    , ("__cdecl",	T_callconv Cdecl)
-    , ("__cdecl__",	T_callconv Cdecl)
-    , ("_stdcall",	T_callconv Stdcall)
-    , ("_cdecl",	T_callconv Cdecl)
-    , ("stdcall",	T_callconv Stdcall)
-    , ("cdecl",	        T_callconv Cdecl)
+    , ("__stdcall",     T_callconv Stdcall)  
+    , ("__stdcall__",   T_callconv Stdcall)  
+    , ("__cdecl",       T_callconv Cdecl)
+    , ("__cdecl__",     T_callconv Cdecl)
+    , ("_stdcall",      T_callconv Stdcall)
+    , ("_cdecl",        T_callconv Cdecl)
+    , ("stdcall",       T_callconv Stdcall)
+    , ("cdecl",         T_callconv Cdecl)
     , ("__attribute__", T_gnu_attribute)
     ] 
 
@@ -212,7 +212,7 @@ dce_keywords = std_idl_keywords ++ dce_idl_keywords
 dce_idl_keywords :: [(String, IDLToken)]
 dce_idl_keywords =
  [ ("error_status_t",   T_type "error_status_t")
- , ("small",		T_int Short)
+ , ("small",            T_int Short)
  ] 
 
 
@@ -221,36 +221,36 @@ midl_keywords = std_idl_keywords ++ dce_idl_keywords ++ ms_idl_keywords
 
 ms_idl_keywords :: [(String, IDLToken)]
 ms_idl_keywords = 
-      [ ("IDispatch",	   T_type "IDispatch")
-      , ("IUnknown",	   T_type "IUnknown")
-      , ("HRESULT",	   T_type "HRESULT")
-      , ("DATE",	   T_type "DATE")
-      , ("CURRENCY",	   T_type "CURRENCY")
-      , ("VARIANT",	   T_type "VARIANT")
+      [ ("IDispatch",      T_type "IDispatch")
+      , ("IUnknown",       T_type "IUnknown")
+      , ("HRESULT",        T_type "HRESULT")
+      , ("DATE",           T_type "DATE")
+      , ("CURRENCY",       T_type "CURRENCY")
+      , ("VARIANT",        T_type "VARIANT")
       , ("VARIANT_BOOL",   T_type "VARIANT_BOOL")
-      , ("BSTR",	   T_type "BSTR")
+      , ("BSTR",           T_type "BSTR")
       , ("SAFEARRAY",      T_safearray)
-      , ("hyper",	   T_int LongLong)
-      , ("__int8",	   T_int Byte)
-      , ("__int16",	   T_int Short)
-      , ("__int32",	   T_int Long)
-      , ("__int64",	   T_int LongLong)
---      , ("int64",	   T_int LongLong)
---      , ("uint64",	   T_uint LongLong)  -- this one, ugh!
-					    
-      , ("coclass",	   T_coclass)
-      , ("cpp_quote",  	   T_cpp_quote)
+      , ("hyper",          T_int LongLong)
+      , ("__int8",         T_int Byte)
+      , ("__int16",        T_int Short)
+      , ("__int32",        T_int Long)
+      , ("__int64",        T_int LongLong)
+--      , ("int64",        T_int LongLong)
+--      , ("uint64",       T_uint LongLong)  -- this one, ugh!
+                                            
+      , ("coclass",        T_coclass)
+      , ("cpp_quote",      T_cpp_quote)
       , ("dispinterface",  T_dispinterface)
-      , ("single",  	   T_float Short)  -- VBism?
-      , ("importlib",	   T_importlib)
-      , ("library",	   T_library)
+      , ("single",         T_float Short)  -- VBism?
+      , ("importlib",      T_importlib)
+      , ("library",        T_library)
       , ("methods",        T_methods)
       , ("properties",     T_properties)
-      , ("bool",	   T_type "bool")
-      , ("volatile",  	   T_volatile)
-      , ("wchar_t",  	   T_type "wchar_t")
+      , ("bool",           T_type "bool")
+      , ("volatile",       T_volatile)
+      , ("wchar_t",        T_type "wchar_t")
          -- The next two are local extensions.
-      , ("hs_quote",  	   T_hs_quote)
+      , ("hs_quote",       T_hs_quote)
       , ("stub_include",   T_include "")
       , ("__ignore_start__", T_ignore_start)
       ]      
@@ -260,11 +260,11 @@ omg_keywords = std_idl_keywords ++ omg_idl_keywords
 
 omg_idl_keywords :: [(String, IDLToken)]
 omg_idl_keywords = 
-  [ ("any",	   T_any)
+  [ ("any",        T_any)
   , ("attribute",  T_attribute)
   , ("context",    T_context)
   , ("exception",  T_exception)
-  , ("fixed",  	   T_fixed)
+  , ("fixed",      T_fixed)
   , ("inout",      T_mode InOut)
   , ("Object",     T_object)
   , ("oneway",     T_oneway)

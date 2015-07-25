@@ -7,8 +7,8 @@ A lexer for MS & OMG IDLs
 \begin{code}
 module Lex 
         ( 
- 	  lexIDL    -- :: (IDLToken -> LexM a) -> LexM a
-	) where
+          lexIDL    -- :: (IDLToken -> LexM a) -> LexM a
+        ) where
 
 import LexM
 import Data.Char
@@ -44,9 +44,9 @@ lexIDL cont = do
        case c1 of
          '/' -> lex_oneline_comment cont
          '*' -> lex_nested_comment cont (1::Int){-one seen-}
-	 _ -> do
-	   putBackChar c1
-	   cont T_div
+         _ -> do
+           putBackChar c1
+           cont T_div
      '(' -> cont T_oparen
      ')' -> cont T_cparen
      '{' -> cont T_ocurly
@@ -58,65 +58,65 @@ lexIDL cont = do
        c1 <- getNextChar
        case c1 of
         '.' -> do
-	  c2 <- getNextChar
-	  case c2 of
-	   '.' -> cont T_dotdotdot
-	   _   -> do
+          c2 <- getNextChar
+          case c2 of
+           '.' -> cont T_dotdotdot
+           _   -> do
              putBackChar c1
              putBackChar c2
-	     cont T_dot
-	_ -> do
-	  putBackChar c1
-	  cont T_dot
+             cont T_dot
+        _ -> do
+          putBackChar c1
+          cont T_dot
      ';' -> cont T_semi
      ':' -> do
        c1 <- getNextChar
        case c1 of
           ':' -> cont T_dcolon
-	  _   -> putBackChar c1 >> cont T_colon
+          _   -> putBackChar c1 >> cont T_colon
      'L'  -> do
         c1 <- getNextChar
-	case c1 of
-	  '\"' -> lex_string (\ (T_string_lit ls) -> cont (T_literal (WStringLit ls)))
-	  _    -> putBackChar c1 >> start_lex_id 'L' cont
+        case c1 of
+          '\"' -> lex_string (\ (T_string_lit ls) -> cont (T_literal (WStringLit ls)))
+          _    -> putBackChar c1 >> start_lex_id 'L' cont
 
      '\"' -> lex_string cont -- matching "
      '\'' -> lex_char cont
      '='  -> do
-	  c1 <- getNextChar
+          c1 <- getNextChar
           case c1 of
-	    '=' -> cont T_eqeq
-	    _   -> putBackChar c1 >> cont T_equal
+            '=' -> cont T_eqeq
+            _   -> putBackChar c1 >> cont T_equal
      '!'  -> do
-	  c1 <- getNextChar
+          c1 <- getNextChar
           case c1 of
-	    '=' -> cont T_neq
-	    _   -> putBackChar c1 >> cont T_negate
+            '=' -> cont T_neq
+            _   -> putBackChar c1 >> cont T_negate
      '+'  -> cont T_plus
      '-'  -> cont T_minus
      '?'  -> cont T_question
      '<'  -> do
-	  c1 <- getNextChar
+          c1 <- getNextChar
           case c1 of
             '<' -> cont (T_shift L)
-	    '=' -> cont T_le
-	    _   -> putBackChar c1 >> cont T_lt
+            '=' -> cont T_le
+            _   -> putBackChar c1 >> cont T_lt
      '>'  -> do 
-	  c1 <- getNextChar
+          c1 <- getNextChar
           case c1 of
-	    '>' -> cont (T_shift R)
-	    '=' -> cont T_ge
+            '>' -> cont (T_shift R)
+            '=' -> cont T_ge
             _   -> putBackChar c1 >> cont T_gt
      '|'  -> do
-	  c1 <- getNextChar
+          c1 <- getNextChar
           case c1 of
-	    '|' -> cont T_rel_or
+            '|' -> cont T_rel_or
             _   -> putBackChar c1 >> cont T_or
      '^'  -> cont T_xor
      '&'  -> do
-	  c1 <- getNextChar
+          c1 <- getNextChar
           case c1 of
-	    '&' -> cont T_rel_and
+            '&' -> cont T_rel_and
             _   -> putBackChar c1 >> cont T_and
      '*'  -> cont T_times
      '%'  -> cont T_mod
@@ -130,58 +130,58 @@ lexIDL cont = do
        if "define" `isPrefixOf` cs2 then
           setStream (drop (6::Int) cs2) >> cont T_hdefine
         else if "pragma" `isPrefixOf` cs2 then
-	  case span (/='\n') (drop (6::Int){-length of "pragma"-} cs2) of
-	    (prag,[]) -> do
-	       setStream []
-	       cont (T_pragma prag)
-	    (prag,_:cs3) -> do
-	       setStream cs3
-	       cont (T_pragma prag)
+          case span (/='\n') (drop (6::Int){-length of "pragma"-} cs2) of
+            (prag,[]) -> do
+               setStream []
+               cont (T_pragma prag)
+            (prag,_:cs3) -> do
+               setStream cs3
+               cont (T_pragma prag)
         else if ("line" `isPrefixOf` cs2) || (notNull cs1 && isSpace (head cs1)) then
-	  let
-	    cs1_no_line = dropWhile (not.isDigit) cs1
-	  in
-	    -- munge, munge - get at the line and loc.
-	  case (reads cs1_no_line) of 
-	    ((ln,rs):_) -> 
-	       case (reads (dropWhile isSpace rs)) of
-	        ((fn,rs1):_) -> do
-		     -- drop any trailing info (such as flags)..
-		    let (flags, rs2) = break (=='\n') rs1
-		    setStream rs2
-		    sl  <- getSrcLoc 
-		    osl <- getOrigSrcLoc
-		    let f   = modSrcLoc sl
-		        ofn = modSrcLoc osl
-		        in_system   = '3' `elem` flags
-			at_end      = '2' `elem` flags
+          let
+            cs1_no_line = dropWhile (not.isDigit) cs1
+          in
+            -- munge, munge - get at the line and loc.
+          case (reads cs1_no_line) of 
+            ((ln,rs):_) -> 
+               case (reads (dropWhile isSpace rs)) of
+                ((fn,rs1):_) -> do
+                     -- drop any trailing info (such as flags)..
+                    let (flags, rs2) = break (=='\n') rs1
+                    setStream rs2
+                    sl  <- getSrcLoc 
+                    osl <- getOrigSrcLoc
+                    let f   = modSrcLoc sl
+                        ofn = modSrcLoc osl
+                        in_system   = '3' `elem` flags
+                        at_end      = '2' `elem` flags
 
-		    flg <- getSystemContextFlag
+                    flg <- getSystemContextFlag
                     inSystemContext in_system  $ do
-		    setSrcLoc (mkSrcLoc fn ln) $
-		      if (optIncludeAsImport && at_end) then
-		         cont T_include_end
-		      else if (optExcludeSysIncludes && at_end && (flg || ofn == fn)) then
-			  -- emit end marker if we're leaving a system context
-			  -- (or name of source module.)
-		         cont T_include_end
-		      else if (optExcludeSysIncludes && not at_end && (in_system || ofn == fn) && f /= fn) then
-		          -- emit start marker if we're entering a system context
-			  -- (or name of source module.)
-		         cont (T_include_start fn)
-		      else if (not optIncludeAsImport || optExcludeSysIncludes || f == fn) then
-		         lexIDL cont -- nothing new.
-		      else 
-		         cont (T_include_start fn)
-	        _ -> do
-	            sloc <- getSrcLoc
-	            cont (T_unknown (sloc,c:cs1))
-	    _ -> do
-	       sloc <- getSrcLoc
-	       cont (T_unknown (sloc,c:cs1))
+                    setSrcLoc (mkSrcLoc fn ln) $
+                      if (optIncludeAsImport && at_end) then
+                         cont T_include_end
+                      else if (optExcludeSysIncludes && at_end && (flg || ofn == fn)) then
+                          -- emit end marker if we're leaving a system context
+                          -- (or name of source module.)
+                         cont T_include_end
+                      else if (optExcludeSysIncludes && not at_end && (in_system || ofn == fn) && f /= fn) then
+                          -- emit start marker if we're entering a system context
+                          -- (or name of source module.)
+                         cont (T_include_start fn)
+                      else if (not optIncludeAsImport || optExcludeSysIncludes || f == fn) then
+                         lexIDL cont -- nothing new.
+                      else 
+                         cont (T_include_start fn)
+                _ -> do
+                    sloc <- getSrcLoc
+                    cont (T_unknown (sloc,c:cs1))
+            _ -> do
+               sloc <- getSrcLoc
+               cont (T_unknown (sloc,c:cs1))
          else do
-	  sloc <- getSrcLoc
-	  cont (T_unknown (sloc,c:cs1))
+          sloc <- getSrcLoc
+          cont (T_unknown (sloc,c:cs1))
      x    -> start_lex_id x cont
 
 start_lex_id :: Char -> (IDLToken -> LexM a) -> LexM a
@@ -190,8 +190,8 @@ start_lex_id c cont = do
        if isDigit c 
           then lex_num cont
           else if isHexDigit c
-	       then lex_guid' cont
-	       else lex_id cont
+               then lex_guid' cont
+               else lex_id cont
 
 {-
 spool_on :: String -> [Char] -> [Char]
@@ -226,8 +226,8 @@ lex_nested_comment cont count = do
     ('*':'/':cs1) -> do
        setStream cs1
        if count == 1 
-	then lexIDL cont
-	else lex_nested_comment cont (count-1)
+        then lexIDL cont
+        else lex_nested_comment cont (count-1)
     (_:cs1)     -> do
        setStream cs1
        lex_nested_comment cont count
@@ -244,77 +244,77 @@ lex_num cont = do
       case readOct cs1 of
        [(i,cs2)] -> 
            case cs2 of
-  	     '-':cs3              -> try_lex_guid cs3
+             '-':cs3              -> try_lex_guid cs3
              c:cs3 | isHexDigit c -> 
                    case dropWhile (isHexDigit) cs3 of
-		     '-':cs4 -> try_lex_guid cs4
-		     _ -> do
-		        -- or should that be an error ?
-		       setStream cs2
-		       cont (T_literal (IntegerLit (ILit 8 i)))
+                     '-':cs4 -> try_lex_guid cs4
+                     _ -> do
+                        -- or should that be an error ?
+                       setStream cs2
+                       cont (T_literal (IntegerLit (ILit 8 i)))
              _ -> do
-	       setStream (removeL cs2)
-	       cont (T_literal (IntegerLit (ILit 8 i)))
+               setStream (removeL cs2)
+               cont (T_literal (IntegerLit (ILit 8 i)))
             where
               -- this may just be the start of a GUID.
-	      try_lex_guid cs3 = 
+              try_lex_guid cs3 = 
                case lex_guid (takeWhile (isHexDigit) cs) cs3 of
                  Nothing         -> do
-		    setStream (removeL cs2)
-		    cont (T_literal (IntegerLit (ILit 8 i)))
-	         Just (guid,cs4) -> do
-		    setStream cs4
-		    cont (T_literal (GuidLit guid))
+                    setStream (removeL cs2)
+                    cont (T_literal (IntegerLit (ILit 8 i)))
+                 Just (guid,cs4) -> do
+                    setStream cs4
+                    cont (T_literal (GuidLit guid))
        _ ->
         -- this is a mess.
-	let (as, bs) = span (isHexDigit) cs in
-	case bs of
-	  '-':bs1 -> 
-	    case lex_guid as bs1 of
-	      Nothing -> do
- 	             sloc <- getSrcLoc
-	             cont (T_unknown (sloc, cs))
-	      Just (guid,cs2) -> do
-		     setStream cs2
-		     cont (T_literal (GuidLit guid))
-	  _ ->
-	    case reads cs of
+        let (as, bs) = span (isHexDigit) cs in
+        case bs of
+          '-':bs1 -> 
+            case lex_guid as bs1 of
+              Nothing -> do
+                     sloc <- getSrcLoc
+                     cont (T_unknown (sloc, cs))
+              Just (guid,cs2) -> do
+                     setStream cs2
+                     cont (T_literal (GuidLit guid))
+          _ ->
+            case reads cs of
               [(i,cs2)] -> do
-	        setStream (removeL cs2)
-	        cont (T_literal (IntegerLit (ILit 10 i)))
+                setStream (removeL cs2)
+                cont (T_literal (IntegerLit (ILit 10 i)))
               _ ->
                 case reads cs of
                   [(d,cs2)] -> do
-	            setStream cs2 
-		    let rs = takeWhile (\ x -> isDigit x || x == '.') cs
-		    cont (T_literal (FloatingLit (rs,d)))
+                    setStream cs2 
+                    let rs = takeWhile (\ x -> isDigit x || x == '.') cs
+                    cont (T_literal (FloatingLit (rs,d)))
                   _ -> do
                     sloc <- getSrcLoc
                     cont (T_unknown (sloc, cs))
 
-    _ ->	     	      
+    _ ->                      
         -- this is a mess.
-	let (as, bs) = span (isHexDigit) cs in
-	case bs of
-	  '-':bs1 -> 
-	    case lex_guid as bs1 of
-	      Nothing -> do
- 	             sloc <- getSrcLoc
-	             cont (T_unknown (sloc, cs))
-	      Just (guid,cs2) -> do
-		     setStream cs2
-		     cont (T_literal (GuidLit guid))
+        let (as, bs) = span (isHexDigit) cs in
+        case bs of
+          '-':bs1 -> 
+            case lex_guid as bs1 of
+              Nothing -> do
+                     sloc <- getSrcLoc
+                     cont (T_unknown (sloc, cs))
+              Just (guid,cs2) -> do
+                     setStream cs2
+                     cont (T_literal (GuidLit guid))
           _ ->
             case reads cs of
              [(i,cs1)] -> do
                    setStream (removeL cs1)
-		   cont (T_literal (IntegerLit (ILit 10 i)))
+                   cont (T_literal (IntegerLit (ILit 10 i)))
              _ ->
                case reads cs of
                  [(d,cs1)] -> do
-		    setStream cs1
-    		    let rs = takeWhile (\ x -> isDigit x || x == '.') cs
-		    cont (T_literal (FloatingLit (rs,d)))
+                    setStream cs1
+                    let rs = takeWhile (\ x -> isDigit x || x == '.') cs
+                    cont (T_literal (FloatingLit (rs,d)))
                  _ -> getSrcLoc >>= \ sc -> cont (T_unknown (sc,cs))
 
  where
@@ -330,9 +330,9 @@ lex_guid' cont = do
         ('-':cs2) -> -- this may just be the start of a GUID.
             case lex_guid (takeWhile (isHexDigit) cs) cs2 of
               Nothing         -> lex_id cont
-	      Just (guid,cs3) -> do
-	         setStream cs3
-		 cont (T_literal (GuidLit guid))
+              Just (guid,cs3) -> do
+                 setStream cs3
+                 cont (T_literal (GuidLit guid))
         _ -> lex_id cont
      _ -> lex_id cont
 
@@ -364,50 +364,50 @@ lex_id cont = do
      case t of
        Just tok@T_safearray ->   -- SIGH.
            case rs of
-	      ('(':rs2) -> setTok tok >> setStream rs2 >> cont tok
-	      _         -> do
-	          setTok tok
-		  setStream rs
-	          res <- lookupType is  -- check to see whether SAFEARRAY
-					-- is to be considered an ID or a TYPE..
-		  case res of
-		    Nothing  -> cont (T_id "SAFEARRAY")
-		    Just x   -> cont x
+              ('(':rs2) -> setTok tok >> setStream rs2 >> cont tok
+              _         -> do
+                  setTok tok
+                  setStream rs
+                  res <- lookupType is  -- check to see whether SAFEARRAY
+                                        -- is to be considered an ID or a TYPE..
+                  case res of
+                    Nothing  -> cont (T_id "SAFEARRAY")
+                    Just x   -> cont x
 
        Just (T_include _) -> do
-	    let 
-		-- Sigh, trying to integrate CPP's #include syntax
-		-- into IDLs will lead to trouble (what's the parse of
-		-- "<a>"?) Not unfixable, but let's delay doing so until
-		-- we move to using a lexer generator.
-	        rs'     = dropWhile isSpace rs
+            let 
+                -- Sigh, trying to integrate CPP's #include syntax
+                -- into IDLs will lead to trouble (what's the parse of
+                -- "<a>"?) Not unfixable, but let's delay doing so until
+                -- we move to using a lexer generator.
+                rs'     = dropWhile isSpace rs
 
-	        ((as,bs), wrapper) = 
-		    case rs' of 
-		      '(':xs -> -- ("foo.h") or (foo.h)
-		          (break (==')') xs, id)
-		      '<':xs -> -- <foo.h>
-		          (break (=='>') xs , \ x -> '<':x ++ ">") 
-		      '"':xs ->  -- "foo.h" Don't even think of using double qoutes
-		                 -- in your filenames!
-			  (break (=='"') xs, \ x -> '"':x ++ "\"")
-		      _      -> (break isSpace rs', id)
+                ((as,bs), wrapper) = 
+                    case rs' of 
+                      '(':xs -> -- ("foo.h") or (foo.h)
+                          (break (==')') xs, id)
+                      '<':xs -> -- <foo.h>
+                          (break (=='>') xs , \ x -> '<':x ++ ">") 
+                      '"':xs ->  -- "foo.h" Don't even think of using double qoutes
+                                 -- in your filenames!
+                          (break (=='"') xs, \ x -> '"':x ++ "\"")
+                      _      -> (break isSpace rs', id)
 
-		bs' =
-		  case bs of
-		    []     -> []
-		    (_:xs) -> xs
+                bs' =
+                  case bs of
+                    []     -> []
+                    (_:xs) -> xs
 
-		tok     = T_include (wrapper as)
-	    setTok tok
-	    setStream bs'
-	    cont tok
+                tok     = T_include (wrapper as)
+            setTok tok
+            setStream bs'
+            cont tok
 
        Just T_ignore_start -> do
            ls <- getStream
            case (dropUntil "__ignore_end__" ls) of
-	      [] -> cont T_eof
-	      xs -> setStream xs >> lexIDL cont
+              [] -> cont T_eof
+              xs -> setStream xs >> lexIDL cont
        Just tok -> setTok tok >> setStream rs >> cont tok
        Nothing  -> setTok (T_id is) >> setStream rs >> cont (T_id is)
 
@@ -436,23 +436,23 @@ lex_string cont = do
      (ls,'\\':rs) -> 
       case rs of
        ('"':rs1) -> -- escaped quote, just continue.
-	  let
-	   (as,bs) = loop rs1
-	  in
-	  (ls++'\\':'\"':as, bs)
+          let
+           (as,bs) = loop rs1
+          in
+          (ls++'\\':'\"':as, bs)
        ('\\':rs1) -> -- want \\" to be interpreted as \\ ", not \ \"
-	  let
-	   (as,bs) = loop rs1
-	  in
-	  (ls++'\\':'\\':as, bs)
+          let
+           (as,bs) = loop rs1
+          in
+          (ls++'\\':'\\':as, bs)
        _ -> -- just continue.
-	  let
-	   (as,bs) = loop rs
-	  in
-	  (ls++'\\':as, bs)
+          let
+           (as,bs) = loop rs
+          in
+          (ls++'\\':as, bs)
      (ls,'\"':rs) -> (ls,rs)
      x -> x
-   	  
+          
 lex_char :: (IDLToken -> LexM a) -> LexM a
 lex_char cont = do
  cs <- getStream

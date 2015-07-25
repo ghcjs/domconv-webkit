@@ -8,11 +8,11 @@ module SrcLoc
        (
           SrcLoc
         , mkSrcLoc
-	, modSrcLoc
-	, dummySrcLoc
+        , modSrcLoc
+        , dummySrcLoc
         , incSrcLineNo
         , ppSrcLoc
-	) where
+        ) where
 
 import PP
 \end{code}

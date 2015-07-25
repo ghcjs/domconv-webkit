@@ -46,7 +46,7 @@ module Utils
        
        , mapAccumLM
        
-       , notNull		-- :: [a] -> Bool
+       , notNull                -- :: [a] -> Bool
 
        , toUnderscoreCamel
        , toLowerInitCamel
@@ -73,7 +73,7 @@ A convenience operator for invoking methods on objects:
 
 \begin{code}
 ( # ) :: a -> (a -> b) -> b
-obj # meth	= meth obj
+obj # meth      = meth obj
 \end{code}
 
 Until NumExts is commonly available, we define the following show functions here:
@@ -86,7 +86,7 @@ showIntAtBase base toChr n r
     case quotRem n base of { (n', d) ->
     case toChr d        of { ch ->
     let
-	r' = ch : r
+        r' = ch : r
     in
     if n' == 0 then r' else showIntAtBase base toChr n' r'
     }}
@@ -135,9 +135,9 @@ splitLast []         ls = (ls,[])
 splitLast sep@(_:ss) ls = splitLastBy (sep `isPrefixOf`) (drop (length ss)) ls
 
 splitLastBy :: ([a] -> Bool) -- True => current suffix satisifies 
-	    -> ([a] -> [a])  -- for the last match, transform the result coming back.
-	    -> [a]
-	    -> ([a],[a])
+            -> ([a] -> [a])  -- for the last match, transform the result coming back.
+            -> [a]
+            -> ([a],[a])
 splitLastBy predic munge ls = 
    case (chomp (-1) (0::Int) ls) of
      (_,bef,aft) -> (bef,aft)
@@ -146,10 +146,10 @@ splitLastBy predic munge ls =
   chomp lst n as@(x:xs) =
        case chomp new_last_pos (n+1) xs of
          (last_found, bef, aft) ->
-	    case (compare last_found n) of
-	      GT -> (last_found, x:bef,   aft)
-	      LT -> (last_found, bef  , x:aft)
-	      EQ -> (last_found, bef  ,   munge aft)
+            case (compare last_found n) of
+              GT -> (last_found, x:bef,   aft)
+              LT -> (last_found, bef  , x:aft)
+              EQ -> (last_found, bef  ,   munge aft)
    where
     new_last_pos
      | predic as = n
@@ -173,8 +173,8 @@ traceIf True str v = trace str v
 traceIf _ _ v = v
 
 elemBy :: (a -> Bool) -> [a] -> Bool
-elemBy _       []	=  False
-elemBy isEqual (y:ys)	=  isEqual y || elemBy isEqual ys
+elemBy _       []       =  False
+elemBy isEqual (y:ys)   =  isEqual y || elemBy isEqual ys
 
 mapUnzip :: (a -> (b,c)) -> [a] -> ([b],[c])
 mapUnzip _ []     = ([],[])
@@ -227,10 +227,10 @@ Slightly generalised version of code found in GreenCard's front end:
 
 \begin{code}
 tryOpen ::   Bool 
-	 -> [FilePath] 
-	 -> [String] 
-	 -> FilePath
-	 -> IO (Maybe FilePath)
+         -> [FilePath] 
+         -> [String] 
+         -> FilePath
+         -> IO (Maybe FilePath)
 tryOpen verbose path exts name = 
   doUntil (mbOpenFile verbose) (allFileNames path name exts)
 
@@ -249,9 +249,9 @@ allFileNames path file exts
      addSuffix _  []  = []
      addSuffix ch ls  = 
         case (decons ls) of
-	  (_,x)
-	    | x == ch   -> ls
-	    | otherwise -> ls++[ch]
+          (_,x)
+            | x == ch   -> ls
+            | otherwise -> ls++[ch]
 
      prefixWith _  [] = []
      prefixWith ch ls@(x:_)
@@ -297,8 +297,8 @@ mbOpenFile verbose fpath = do
 basename :: String -> String
 basename str = snd $
     splitLastBy (\ (x:_) -> x == '/' || x == '\\')
-    		id
-		str
+                id
+                str
      -- bi-lingual, the upshot of which is that
      -- / isn't allowed in DOS-style paths (and vice
      -- versa \ isn't allowed in POSIX(?) style pathnames).
@@ -326,9 +326,9 @@ deEscapeString ls@('\\':x:xs) =
   case x of
     '"' -> x : deEscapeString xs -- "
     _   -> 
-	case readLitChar ls of
-	  ((ch,rs):_) -> ch : deEscapeString rs
-	  _ -> '\\':x: deEscapeString xs
+        case readLitChar ls of
+          ((ch,rs):_) -> ch : deEscapeString rs
+          _ -> '\\':x: deEscapeString xs
 deEscapeString (x:xs) = x: deEscapeString xs
 \end{code}
 
@@ -362,7 +362,7 @@ concMaybe _          v = v
 -- If predicate is false, represent it as Nothing.
 toMaybe :: (a -> Bool) -> a -> Maybe a
 toMaybe predic x | predic x  = Nothing
-	         | otherwise = Just x
+                 | otherwise = Just x
 \end{code}
 
 \begin{code}
@@ -380,13 +380,13 @@ snoc (x:xs) y = x : snoc xs y
 \begin{code}
 mapAccumLM :: (Monad m)
            => (acc -> x -> m (acc, y)) -- Function of elt of input list
-				     -- and accumulator, returning new
-				     -- accumulator and elt of result list
-   	   -> acc	    -- Initial accumulator 
-	   -> [x]	    -- Input list
-	   -> m (acc, [y])	    -- Final accumulator and result list
-mapAccumLM _ s []     	=  return (s, [])
-mapAccumLM f s (x:xs) 	=  do
+                                     -- and accumulator, returning new
+                                     -- accumulator and elt of result list
+           -> acc           -- Initial accumulator 
+           -> [x]           -- Input list
+           -> m (acc, [y])          -- Final accumulator and result list
+mapAccumLM _ s []       =  return (s, [])
+mapAccumLM f s (x:xs)   =  do
  (s', y)     <- f s x
  (s'',ys)    <- mapAccumLM f s' xs
  return (s'',y:ys)

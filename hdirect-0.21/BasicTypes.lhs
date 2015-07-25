@@ -6,49 +6,49 @@
 \begin{code}
 module BasicTypes 
 
-	(
-	  Name
+        (
+          Name
 
-	, QualName
-	, qName
-	, qOrigName
-	, qModule
-	, qDefModule
-	, mkQualName
-	, toQualName
-	, prefixQName
-	, prefixAppQName
-	, setOrigQName
+        , QualName
+        , qName
+        , qOrigName
+        , qModule
+        , qDefModule
+        , mkQualName
+        , toQualName
+        , prefixQName
+        , prefixAppQName
+        , setOrigQName
 
-	, ScopedName
-	, Inherit
-	, GUID
-	, Size(..)
-	, CallConv(..)
-	, BinaryOp(..)
-	, UnaryOp(..)
-	, ShiftDir(..)
-	, Qualifier(..)
-	, PointerType(..)
+        , ScopedName
+        , Inherit
+        , GUID
+        , Size(..)
+        , CallConv(..)
+        , BinaryOp(..)
+        , UnaryOp(..)
+        , ShiftDir(..)
+        , Qualifier(..)
+        , PointerType(..)
 
-	, ParamDir(..)
-	, isInOut
+        , ParamDir(..)
+        , isInOut
 
-	, ppBinaryOp
-	, ppUnaryOp
-	, ppQualifier
-	, ppSize
-	, ppCallConv
-	, ppName
-	, ppQualName
-	, ppDirection
-	
-	, strToCallConv
-	
-	, EnumKind(..)
-	, classifyProgression
+        , ppBinaryOp
+        , ppUnaryOp
+        , ppQualifier
+        , ppSize
+        , ppCallConv
+        , ppName
+        , ppQualName
+        , ppDirection
+        
+        , strToCallConv
+        
+        , EnumKind(..)
+        , classifyProgression
 
-	) where
+        ) where
 
 import PP
 import Data.Maybe ( fromMaybe )
@@ -68,12 +68,12 @@ type Name = String
 -- a qualified.. Name - used throughout the backend to keep
 -- track of home & name of types & values.
 data QualName = QName {
-		  qName       :: Name,
-		  qOrigName   :: Name,
-		  qModule     :: Maybe Name,
-		  qDefModule  :: Maybe Name  -- where the name was originally defined.
-		}
-	        deriving Eq
+                  qName       :: Name,
+                  qOrigName   :: Name,
+                  qModule     :: Maybe Name,
+                  qDefModule  :: Maybe Name  -- where the name was originally defined.
+                }
+                deriving Eq
 
 mkQualName :: Maybe String -> String -> QualName
 mkQualName md nm = QName nm nm md Nothing
@@ -109,16 +109,16 @@ data Size
  = Byte | Short | Natural | Long | LongLong
    deriving (
               Show -- for Lex debugging only
-	    , Eq
-	    ) 
+            , Eq
+            ) 
 
 data CallConv = Stdcall | Pascal | Cdecl | Fastcall
-	        deriving ( Eq, Show )
+                deriving ( Eq, Show )
 
 strToCallConv :: String -> Maybe CallConv
 strToCallConv "stdcall" = Just Stdcall
 strToCallConv "cdecl"   = Just Cdecl
-strToCallConv _		= Nothing
+strToCallConv _         = Nothing
 \end{code}
 
 Arithmetic and logical operators allowed in IDL:
@@ -143,8 +143,8 @@ data Qualifier
  = Const | Volatile
    deriving (
               Show
-	    , Eq
-	    )
+            , Eq
+            )
 
 data PointerType 
   = Ptr 
@@ -264,7 +264,7 @@ data EnumKind
  | Unclassified
    deriving ( Show -- for debugging
             , Eq
-	    )
+            )
 
  -- assume that the tag sequence is appropriately sorted.
  -- ('weird' int type of the tags is due to the fact that's
@@ -273,7 +273,7 @@ classifyProgression :: [Int32] -> EnumKind
 classifyProgression []  = Unclassified
 classifyProgression [x] = EnumProgression (fromIntegral x) 0
 classifyProgression ls@(x:y:_)
-  | x == y    			          = Unclassified
+  | x == y                                = Unclassified
   | and (zipWith (==) ls (pow2Series x))  = EnumFlags (fromIntegral x)
   | and (zipWith (==) ls [x,(x+(y-x))..]) = EnumProgression (fromIntegral x) (fromIntegral (y-x))
   | otherwise                             = Unclassified
@@ -281,6 +281,6 @@ classifyProgression ls@(x:y:_)
    pow2Series n = n : pow2Series (doub n)
 
    doub n | n == 0    = 1
-   	  | otherwise = 2*n
+          | otherwise = 2*n
 
 \end{code}

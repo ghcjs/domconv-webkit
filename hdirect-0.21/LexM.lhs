@@ -11,7 +11,7 @@ module LexM
 
        (
          LexM
-	
+        
        , runLexM         -- :: [FilePath] -> String -> LexM a -> IO (a, SymbolTable IDLToken)
        , invokeLexM      -- :: String -> String -> LexM a -> LexM a
        , ioToLexM        -- :: IO a   -> LexM a
@@ -51,7 +51,7 @@ import PreProc
 import Data.IORef  ( IORef, newIORef, readIORef, writeIORef )
 import Utils   ( tryOpen, dropSuffix )
 import System.IO      ( hPutStrLn, stderr )
-import Control.Monad   ( when )
+import Control.Monad (ap, when)
 import Data.Char    ( toLower )
 
 -- components threaded by the monad (apart from
@@ -78,7 +78,7 @@ runLexM :: [String]
         -> String
         -> String 
         -> LexM a 
-	-> IO a
+        -> IO a
 runLexM path fname str (LexM m) = do
   var <- newIORef []
   let sl = (mkSrcLoc fname 1)
@@ -96,14 +96,14 @@ invokeLexM fname ls (LexM m) =
         sl    = (mkSrcLoc fname 1)
     (v, LexState symt2 _ _) 
       <- m (LexEnv sl sl flg path var)
-	   (LexState symt tok ls)
+           (LexState symt tok ls)
     return (v, LexState symt2{-(SymbolTable.combineSyms symt symt2)-} tok cs))
 
 ioToLexM :: IO a -> LexM a
 ioToLexM act =
  LexM (\ _ st -> do
          v <- act
-	 return (v, st))
+         return (v, st))
 
 cacheFilePath :: FilePath -> LexM ()
 cacheFilePath f =
@@ -193,8 +193,8 @@ thenLexM :: LexM a -> (a -> LexM b) -> LexM b
 thenLexM (LexM m) n =
  LexM ( \ env st -> do
           (a, st1) <- m env st
-	  let (LexM act) = n a
-	  act env st1 )
+          let (LexM act) = n a
+          act env st1 )
 
 returnLexM :: a -> LexM a
 returnLexM v = LexM (\ _ st -> return (v, st) )
@@ -210,6 +210,7 @@ instance Functor LexM where
 
 instance Applicative LexM where
   pure = returnLexM
+  (<*>) = ap
 
 instance Monad LexM where
   (>>=)  = thenLexM

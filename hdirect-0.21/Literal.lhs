@@ -6,19 +6,19 @@
 
 \begin{code}
 module Literal 
-	(
-	  Literal(..)
+        (
+          Literal(..)
 
-	, IntegerLit(..)
-	, iLit			-- :: Integral a => a -> Literal
-	, iLitToIntegral	-- :: Integral a => IntegerLit -> a
-	, iLitToInteger		-- :: IntegerLit -> Integer
-	
-	, ppLit
-	, ppILit
-	, litToString
-	
-	) where
+        , IntegerLit(..)
+        , iLit                  -- :: Integral a => a -> Literal
+        , iLitToIntegral        -- :: Integral a => IntegerLit -> a
+        , iLitToInteger         -- :: IntegerLit -> Integer
+        
+        , ppLit
+        , ppILit
+        , litToString
+        
+        ) where
 
 import PP
 import Utils
@@ -43,13 +43,13 @@ data Literal
    deriving ( 
               Show -- for Lex debugging only
             , Eq
-	    ) 
+            ) 
 
 data IntegerLit = ILit Int{-base-} Integer
                   deriving (
-		             Show -- for Lex debugging only
-			   , Eq
-			   ) 
+                             Show -- for Lex debugging only
+                           , Eq
+                           ) 
 iLit :: Integral a => a -> Literal
 iLit x = IntegerLit (ILit 10 (toInteger x))
 

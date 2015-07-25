@@ -11,7 +11,7 @@ Running cpp over a file:
 module PreProc 
         (
           preProcessFile
-	, removeTmp
+        , removeTmp
         ) where
 
 import System.Environment  ( getEnv )
@@ -33,7 +33,7 @@ prefix :: IORef Integer
 prefix = unsafePerformIO (newIORef 0)
 
 preProcessFile :: String      -- file to run cpp over.
-	       -> IO String   -- where the result is stored.
+               -> IO String   -- where the result is stored.
 preProcessFile fname 
  | not (optCpp)  = return fname
  | otherwise     = do
@@ -53,17 +53,17 @@ preProcessFile fname
       oput    = "#include "++show fname ++ "\n"
       incls   = 
          " -I. " ++
-	 case optinclude_cppdirs of
-	    [] -> []
-	    ls -> '-':'I':'"': concat (intersperse ":" ls) ++ "\""
+         case optinclude_cppdirs of
+            [] -> []
+            ls -> '-':'I':'"': concat (intersperse ":" ls) ++ "\""
 
       defines = 
         " -D__midl"         ++ 
-	" -D__restrict="    ++    -- pesky GNU extensions.
-	" -D__restrict__="  ++
-	" -D__extension__=" ++
-	" -D__const__=const" ++
-	" -D__const=const" ++
+        " -D__restrict="    ++    -- pesky GNU extensions.
+        " -D__restrict__="  ++
+        " -D__extension__=" ++
+        " -D__const__=const" ++
+        " -D__const=const" ++
         ' ':unwords optcpp_defines
 
   cpp <- catch (getEnv "CPP")

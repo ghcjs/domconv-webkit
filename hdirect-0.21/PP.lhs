@@ -8,13 +8,13 @@ a little for the task at hand.
 \begin{code}
 module PP
        (
-	 PPDoc
+         PPDoc
        , showPPDoc
        , getPPEnv
        , setPPEnv
        
-	 -- additional pp combinators
-	 -- (pinched from GC source.)
+         -- additional pp combinators
+         -- (pinched from GC source.)
        , vsep
        , joinedBy
        , ppDecls
@@ -65,7 +65,7 @@ module PP
        , punctuate
 
        , render
-	
+        
        ) where
 
 import qualified Pretty as P
@@ -245,8 +245,8 @@ render d       = \ v -> P.render (d v)
 punctuate :: PPDoc a -> [PPDoc a] -> [PPDoc a]
 punctuate _ []     = []
 punctuate p (d:ds) = go d ds
-		   where
-		     go s [] = [s]
-		     go s (e:es) = (s <> p) : go e es
+                   where
+                     go s [] = [s]
+                     go s (e:es) = (s <> p) : go e es
 
 \end{code}
