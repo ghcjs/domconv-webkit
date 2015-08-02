@@ -377,7 +377,7 @@ case_label :: { CaseLabel }
    | DEFAULT ':'                { Default }
 
 element_spec :: { SwitchArm }
-   : type_spec declarator       { (Param Required $2 $1 []) }
+   : type_spec declarator       { (Param Required $2 $1 [] []) }
 
 enum_type :: { Type }
    : opt_extended_attributes ENUM identifier '{' enumerators '}' { TyEnum (Just $3) (reverse $5) }
@@ -452,8 +452,8 @@ param_decls :: { [Param] }
    | param_decls ',' param_decl         { $3:$1 }
 
 param_decl :: { Param }
-   : param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator { Param Optional $5 $4 [$1] }
-   | param_attribute opt_extended_attributes param_type_spec simple_declarator { Param Required $4 $3 [$1] }
+   : param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator { Param Optional $5 $4 [$1] $2 }
+   | param_attribute opt_extended_attributes param_type_spec simple_declarator { Param Required $4 $3 [$1] $2 }
 
 param_attribute :: { Attribute }
    : {-nothing-}        { Mode In }

@@ -140,7 +140,7 @@ type CoClassMember = (Bool, Id, [Attribute])
 
 data Optionality = Optional | Required deriving ( Eq, Show )
 
-data Param      = Param Optionality Id Type [Attribute]
+data Param      = Param Optionality Id Type [Attribute] [ExtAttribute]
                   deriving ( Eq, Show )
 
 type Member     = (Type, [Attribute], [Id])

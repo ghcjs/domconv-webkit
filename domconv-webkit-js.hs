@@ -9,7 +9,8 @@ import System.Directory
 import System.Environment
 import System.FilePath
 import System.Exit
-import System.IO (stderr, openFile, hClose, IOMode (..), hPutStrLn)
+import System.IO
+       (hPrint, stderr, openFile, hClose, IOMode(..), hPutStrLn)
 import Control.Monad
 import Data.Maybe
 import Data.Either
@@ -63,7 +64,7 @@ makeWebkitBindings idl args = do
 --                            ++ ", webkit_dom_" ++ map toLower (underscore child) ++ "_get_type if webkit-dom"
 --                    hierarchy (n+4) child
 --            _ -> return ()
-  exitWith (ExitSuccess)
+  exitSuccess
 
 processIDL idl args = do
   let epopts = parseOptions ("-DLANGUAGE_GOBJECT=1":args)
@@ -79,14 +80,14 @@ interfaceName n = n
 procopts idl opts = do
   let (hsrc, inclfile) = (readFile idl, idl)
       baseopt = [("boolean", "Bool")]
-      optsb = opts {defines = ((defines opts) ++ baseopt)
-                   ,boolopts = ((boolopts opts) {pragma = True}) }
+      optsb = opts{defines = defines opts ++ baseopt,
+                   boolopts = (boolopts opts){pragma = True}}
   hsrc' <- hsrc
   hsrcpr <- runCpphs optsb inclfile hsrc'
   x <- runLexM [] inclfile hsrcpr OmgParser.parseIDL
   let prntmap = mkParentMap x
   let valmsg = valParentMap prntmap
-  when (length valmsg > 0) $ do
+  unless (null valmsg) $ do
     mapM_ (hPutStrLn stderr) valmsg
     exitWith (ExitFailure 2)
   let modst = DOMState {
@@ -100,20 +101,14 @@ procopts idl opts = do
   f <- openFile "webkit-dom.js" WriteMode
   forM_ (procmod modst') $ \ (interface, js) -> do
     hPutStrLn f $ "// " ++ interface
-    hPutStrLn f . show $ renderJs js
+    hPrint f $ renderJs js
   hClose f
   return ()
 
 -- Get a module namespace (all elements of name separated with dots except
 -- the last one)
-
 modNS :: String -> String
-
-modNS mn = concat $ intersperse "." mnpts where
-  mnpts = case (reverse $ parts (== '.') mn) of
-    [] -> []
-    [_] -> []
-    (p:ps) -> reverse ps
+modNS mn = intercalate "." . reverse . drop 1 . reverse $ parts (== '.') mn
 
 -- Write a module surrounded by split begin/end comments
 
@@ -129,14 +124,15 @@ domLoop st (def : defs) = case def of
   I.Pragma prgm -> domLoop (prgm2State st (dropWhile isSpace prgm)) defs
   I.Module id moddef ->
     let prmod = mod2mod st (I.Module id' moddef)
-        modn = ns st ++ (renameMod $ concat $ intersperse "." $
-                           reverse $ parts ( == '.') (getDef def))
+        modn = ns st ++
+                 renameMod
+                   (intercalate "." (reverse $ parts (== '.') (getDef def)))
         id' = I.Id modn
         imp' = modn : imp st
-        modl = prmod : (procmod st) in
+        modl = prmod : procmod st in
     domLoop st {procmod = modl, imp = imp'} defs
   z ->
-    let logmsg = "Expected a Module or a Pragma; found " ++ (show z) in
+    let logmsg = "Expected a Module or a Pragma; found " ++ show z in
     domLoop st {convlog = convlog st ++ [logmsg]} defs
 
 -- Modify DOMState based on a pragma encountered
@@ -145,7 +141,7 @@ prgm2State :: DOMState -> String -> DOMState
 
 prgm2State st ('n':'a':'m':'e':'s':'p':'a':'c':'e':nns) =
   let nnsst = read (dropWhile isSpace nns)
-      dot = if length nnsst == 0 then "" else "." in
+      dot = if null nnsst then "" else "." in
   st {ns = nnsst ++ dot}
 
 prgm2State st upgm =
@@ -160,7 +156,7 @@ valParentMap :: M.Map String [Either String String] -> [String]
 
 valParentMap pm = concat (M.elems m2) where
   m2 = M.mapWithKey lefts pm
-  lefts intf parents = concat $ map (leftmsg intf) parents
+  lefts intf = concatMap (leftmsg intf)
   leftmsg intf (Right _) = []
   leftmsg intf (Left p) = ["Interface " ++ intf ++ " has " ++ p ++ " as a parent, but " ++
                            p ++ " is not defined anywhere"]
@@ -172,16 +168,15 @@ valParentMap pm = concat (M.elems m2) where
 mkParentMap :: [I.Defn] -> M.Map String [Either String String]
 
 mkParentMap defns = m2 where
-  allintfs = nub $ concat $ map getintfs defns
+  allintfs = nub $ concatMap getintfs defns
   getintfs (I.Module _ moddefs) = filter intfOnly moddefs
   getintfs _ = []
   m1 = M.fromList $ zip (map getDef allintfs) allintfs
   m2 = M.fromList (map getparents allintfs)
-  getparents i@(I.Interface _ supers _ _ _) = (getDef i, concat $ map parent supers)
-  parent pidf = case (pidf `M.member` m1) of
-    True  -> (Right pidf) : snd (getparents (fromJust $ M.lookup pidf m1))
-    False -> [Left pidf]
-
+  getparents i@(I.Interface _ supers _ _ _) = (getDef i, concatMap parent supers)
+  parent pidf = if pidf `M.member` m1
+                    then Right pidf : snd (getparents (fromJust $ M.lookup pidf m1))
+                    else [Left pidf]
 
 -- A list of single-letter formal argument names (max. 26)
 
@@ -226,16 +221,16 @@ mod2mod st md@(I.Module _ moddefs) = (renameMod $ getDef md, mconcat decls)
   where
     intfs = filter intfOnly moddefs
     decls = types ++ methods ++ attrs
-    methods = concat $ map intf2meth intfs
-    types = concat $ map intf2type intfs
-    attrs = concat $ map intf2attr intfs
+    methods = concatMap intf2meth intfs
+    types = concatMap intf2type intfs
+    attrs = concatMap intf2attr intfs
 
 mod2mod _ z = error $ "Input of mod2mod should be a Module but is " ++ show z
 
 -- For each interface found, define a newtype with the same name
 
 intf2type :: I.Defn -> [JStat]
-intf2type intf@(I.Interface _ _ _ _ _) = [[jmacro| `(jsv functionName)` = \ -> h$g_get_type(`(jsv typeName)`) |]]
+intf2type intf@(I.Interface{}) = [[jmacro| `(jsv functionName)` = \ -> h$g_get_type(`(jsv typeName)`) |]]
   where
     functionName = "h$webkit_dom_" ++ gtkName (getDef intf) ++ "_get_type"
     typeName = jsType $ getDef intf
@@ -248,13 +243,13 @@ intf2type _ = []
 -- A filter to select only operations (methods)
 
 opsOnly :: I.Defn -> Bool
-opsOnly (I.Operation _ _ _ _ _) = True
+opsOnly (I.Operation{}) = True
 opsOnly _ = False
 
 -- A filter to select only attributes
 
 attrOnly :: I.Defn -> Bool
-attrOnly (I.Attribute _ _ _ _ _) = True
+attrOnly (I.Attribute{}) = True
 attrOnly _ = False
 
 -- A filter to select only interfaces (classes)
@@ -266,7 +261,7 @@ intfOnly _ = False
 -- A filter to select only constant definitions
 
 constOnly :: I.Defn -> Bool
-constOnly (I.Constant _ _ _ _) = True
+constOnly (I.Constant{}) = True
 constOnly _ = False
 
 -- Collect all operations defined in an interface
@@ -306,7 +301,7 @@ collectAttrs _ = []
 intf2attr :: I.Defn -> [JStat]
 
 intf2attr intf@(I.Interface (I.Id iid) _ cldefs _ _) =
-    concat $ map mkattr $ collectAttrs intf
+    concatMap mkattr (collectAttrs intf)
   where
     mkattr (I.Attribute [] _ _ _ _) = []
     mkattr (I.Attribute _ _ (I.TyName "MediaQueryListListener" _) _ _) = []
@@ -330,7 +325,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs _ _) =
     mksetter iid iat tat r = [simpl iid iat tat r]
     setf intf iat = U.toLowerInitCamel $ getDef intf ++ "Set" ++ U.toUpperHead iat
     getf intf iat = U.toLowerInitCamel $ getDef intf ++ "Get" ++ U.toUpperHead iat
-    eventName iat = maybe iat id (stripPrefix "on" iat)
+    eventName iat = fromMaybe iat (stripPrefix "on" iat)
     eventf intf iat = U.toLowerInitCamel $ getDef intf ++ U.toUpperHead iat
     simpl iid iat tat raises =
         BlockStat [ DeclStat (StrI ffi) Nothing,
@@ -339,7 +334,7 @@ intf2attr intf@(I.Interface (I.Id iid) _ cldefs _ _) =
         ffi = "h$webkit_dom_" ++ gtkName (setf intf iat)
         func = JFunc (map StrI $ ["self", "self_2"] ++ paramName val) [jmacro| self[`(iat)`] = `(rhs)`; |]
         rhs = applyParam val
-        val = I.Param I.Required (I.Id "val") tat [I.Mode In]
+        val = I.Param I.Required (I.Id "val") tat [I.Mode In] []
     mkgetter iid iat tat r = [gimpl iid iat tat r]
     gimpl iid iat tat raises =
         BlockStat [ DeclStat (StrI ffi) Nothing,
@@ -354,16 +349,16 @@ intf2attr _ = []
 intf2meth :: I.Defn -> [JStat]
 
 intf2meth intf@(I.Interface _ _ cldefs _ _) =
-  (concat $ map mkmeth $ collectOps intf) ++
-  (concat $ map mkconst $ collectConst intf) where
-    getDefHs op = getDef op
+  concatMap mkmeth (collectOps intf) ++
+    concatMap mkconst (collectConst intf) where
+    getDefHs = getDef
     getDefJs op@(I.Operation _ _ _ mbctx _) = case mbctx of
       Nothing -> getDef op
       Just [] -> getDef op
       Just (s:_) -> s
     mkconst cn@(I.Constant (I.Id cid) _ _ (I.Lit (IntegerLit (ILit base val)))) = []
     mkmeth op | getDef op `elem` ["getCSSCanvasContext", "getSVGDocument"] = []
-    mkmeth (I.Operation _ _ _ _ ext) | not (getDef intf `elem` ["Node"]) && I.ExtAttr (I.Id "Custom") [] `elem` ext = []
+    mkmeth (I.Operation _ _ _ _ ext) | notElem (getDef intf) ["Node"] && I.ExtAttr (I.Id "Custom") [] `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") [] `elem` ext = []
     mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "CallWith") [] `elem` ext = []
     mkmeth op | skip op = []
@@ -377,8 +372,8 @@ intf2meth intf@(I.Interface _ _ cldefs _ _) =
                   (map applyParam parm)
         ffi = "h$webkit_dom_" ++ gtkName (getDef intf ++ U.toUpperHead (getDefHs op))
     skip (I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm
-    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _) = True
-    excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _) = True
+    excludedParam (I.Param _ _ (I.TyName "EventListener" _) _ _) = True
+    excludedParam (I.Param _ _ (I.TyName "MediaQueryListListener" _) _ _) = True
     excludedParam _ = False
 
 intf2meth _ = []
@@ -412,7 +407,7 @@ asIs "Bool"         = Just "Bool"
 asIs "Int"          = Just "Int"
 asIs _              = Nothing
 
-paramName param@(I.Param _ (I.Id p) ptype [I.Mode In]) =
+paramName param@(I.Param _ (I.Id p) ptype [I.Mode In] _) =
   case ptype of
     I.TyName "DOMString" Nothing -> [p,p++"_2"]
     I.TyName "DOMTimeStamp" Nothing -> [p]
@@ -422,13 +417,13 @@ paramName param@(I.Param _ (I.Id p) ptype [I.Mode In]) =
     I.TyInteger _ -> [p]
     I.TyFloat _   -> [p]
     I.TyApply _ (I.TyInteger _) -> [p]
-    t -> error $ "Param type " ++ (show t)
+    t -> error $ "Param type " ++ show t
 
 -- Apply a parameter to a FFI call
 
 applyParam :: I.Param -> JExpr
 
-applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) =
+applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In] _) =
   case ptype of
     I.TyName "DOMString" Nothing -> [jmacroE| h$decodeUtf8z(`(jsv p)`,`(jsv $ p ++ "_2")`) |]
     I.TyName "DOMTimeStamp" Nothing -> jsv p
@@ -438,9 +433,9 @@ applyParam param@(I.Param _ (I.Id p) ptype [I.Mode In]) =
     I.TyInteger _ -> jsv p
     I.TyFloat _   -> jsv p
     I.TyApply _ (I.TyInteger _) -> jsv p
-    t -> error $ "Param type " ++ (show t)
+    t -> error $ "Param type " ++ show t
 
-applyParam param@(I.Param _ _ _ _) = error $ "Unsupported parameter attributes " ++ show param
+applyParam param@(I.Param {}) = error $ "Unsupported parameter attributes " ++ show param
 
 returnType :: I.Type -> JExpr -> JStat
 returnType (I.TyName "DOMString" Nothing) e = [jmacro| h$ret1=0; return h$encodeUtf8(`(e)`) |]

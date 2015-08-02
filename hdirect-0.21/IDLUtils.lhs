@@ -57,7 +57,7 @@ getUses d =
     Attributed _ d1       -> getUses d1
     TypeDecl t            -> getTyUses t
     ExternDecl t _        -> getTyUses t
-    Operation (FunId _ _ ps) r _ _ _ -> getTyUses r ++ concatMap (\ (Param _ _ t _) -> getTyUses t) ps
+    Operation (FunId _ _ ps) r _ _ _ -> getTyUses r ++ concatMap (\ (Param _ _ t _ _) -> getTyUses t) ps
     _                     -> []
 
 -- Since the types were constructed from type libraries, we can make
