@@ -481,7 +481,7 @@ splitModule (H.HsModule _ modid mbexp imps decls) = submods where
                       "Prelude hiding (drop, error, print)"
                     , "Data.Typeable (Typeable)"
                     , "Foreign.Marshal (maybePeek, maybeWith)"
-                    , "System.Glib.FFI (maybeNull, withForeignPtr, nullForeignPtr, Ptr, nullPtr, castPtr, Word, Int64, Word64, CChar(..), CInt(..), CUInt(..), CLong(..), CULong(..), CShort(..), CUShort(..), CFloat(..), CDouble(..), toBool, fromBool)"
+                    , "System.Glib.FFI (maybeNull, withForeignPtr, nullForeignPtr, Ptr, nullPtr, castPtr, Word, Int64, Word64, CChar(..), CInt(..), CUInt(..), CLong(..), CULong(..), CLLong(..), CULLong(..), CShort(..), CUShort(..), CFloat(..), CDouble(..), toBool, fromBool)"
                     , "System.Glib.UTFString (GlibString(..), readUTFString)"
                     , "Control.Applicative ((<$>))"
                     , "Control.Monad (void)"

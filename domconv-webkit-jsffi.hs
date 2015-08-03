@@ -165,6 +165,7 @@ makeWebkitBindings idl args = do
 moduleInWebKitGtk "Comment" = False
 moduleInWebKitGtk "DocumentFragment" = False
 moduleInWebKitGtk "StorageQuota" = False
+moduleInWebKitGtk "MessagePort" = False
 moduleInWebKitGtk x = inWebKitGtk x
 
 processIDL idl args = do
