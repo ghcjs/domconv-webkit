@@ -92,36 +92,13 @@ makeWebkitBindings idl args = do
                     Just s ->
                         forM_ (S.toList s) $ \child -> do
                             hPutStrLn hh $ replicate n ' ' ++ "WebKitDOM" ++ webkitType child ++ " as " ++ typeFor child
-                                    ++ ", webkit_dom_" ++ map toLower (underscore $ webkitType child) ++ "_get_type if " ++ stripGtk (guard $ typeFor child)
+                                    ++ ", webkit_dom_" ++ map toLower (underscore $ webkitType child) ++ "_get_type if " ++ stripGtk (webkitTypeGuard $ typeFor child)
                             hierarchy (n+4) child
                     _ -> return ()
         hierarchy 8 ""
         hClose hh
         renameFile hierarchyFile (hierarchyFile ++ ".old")
         renameFile (hierarchyFile ++ ".new") hierarchyFile
-    guard "DOMNamedFlowCollection" = "webkitgtk-2.2"
-    guard "SecurityPolicy" =  "webkitgtk-1.10"
-    guard "WindowCSS" = "webkitgtk-2.2"
-    guard "KeyboardEvent" = "webkitgtk-2.2"
-    guard "StorageInfo" = "webkitgtk-1.10"
-    guard "AudioTrack" = "webkitgtk-2.2"
-    guard "AudioTrackList" = "webkitgtk-2.2"
-    guard "BarProp" = "webkitgtk-2.2"
-    guard "BatteryManager" = "webkitgtk-2.2"
-    guard "CSS" = "webkitgtk-2.2"
-    guard "Performance" = "webkitgtk-2.2"
-    guard "PerformanceNavigation" = "webkitgtk-2.2"
-    guard "PerformanceTiming" = "webkitgtk-2.2"
-    guard "StorageQuota" = "webkitgtk-2.2"
-    guard "TextTrack" = "webkitgtk-2.2"
-    guard "TextTrackCue" = "webkitgtk-2.2"
-    guard "TextTrackCueList" = "webkitgtk-2.2"
-    guard "TextTrackList" = "webkitgtk-2.2"
-    guard "Touch" = "webkitgtk-2.4"
-    guard "VideoTrack" = "webkitgtk-2.2"
-    guard "VideoTrackList" = "webkitgtk-2.2"
-    guard "WheelEvent" = "webkitgtk-2.4"
-    guard _ = "webkit-dom"
 
 processIDL idl args = do
   let epopts = parseOptions args -- ("-DLANGUAGE_GOBJECT=1":args)
