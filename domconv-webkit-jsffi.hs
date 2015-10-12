@@ -128,25 +128,25 @@ makeWebkitBindings idl args = do
             ++ "--\n"
             ++ "-- <https://developer.mozilla.org/en-US/docs/Web/API/"
                        ++ jsname name ++ " Mozilla " ++ jsname name ++ " documentation>\n"
-            ++ "newtype " ++ name ++ " = " ++ name ++ " { un" ++ name ++ " :: JSRef }\n\n"
+            ++ "newtype " ++ name ++ " = " ++ name ++ " { un" ++ name ++ " :: JSVal }\n\n"
             ++ "instance Eq (" ++ name ++ ") where\n"
             ++ "  (" ++ name ++ " a) == (" ++ name ++ " b) = js_eq a b\n\n"
 
-            ++ "instance PToJSRef " ++ name ++ " where\n"
-            ++ "  pToJSRef = un" ++ name ++ "\n"
-            ++ "  {-# INLINE pToJSRef #-}\n\n"
+            ++ "instance PToJSVal " ++ name ++ " where\n"
+            ++ "  pToJSVal = un" ++ name ++ "\n"
+            ++ "  {-# INLINE pToJSVal #-}\n\n"
 
-            ++ "instance PFromJSRef " ++ name ++ " where\n"
-            ++ "  pFromJSRef = " ++ name ++ "\n"
-            ++ "  {-# INLINE pFromJSRef #-}\n\n"
+            ++ "instance PFromJSVal " ++ name ++ " where\n"
+            ++ "  pFromJSVal = " ++ name ++ "\n"
+            ++ "  {-# INLINE pFromJSVal #-}\n\n"
 
-            ++ "instance ToJSRef " ++ name ++ " where\n"
-            ++ "  toJSRef = return . un" ++ name ++ "\n"
-            ++ "  {-# INLINE toJSRef #-}\n\n"
+            ++ "instance ToJSVal " ++ name ++ " where\n"
+            ++ "  toJSVal = return . un" ++ name ++ "\n"
+            ++ "  {-# INLINE toJSVal #-}\n\n"
 
-            ++ "instance FromJSRef " ++ name ++ " where\n"
-            ++ "  fromJSRef = return . fmap " ++ name ++ " . maybeJSNullOrUndefined\n"
-            ++ "  {-# INLINE fromJSRef #-}\n\n"
+            ++ "instance FromJSVal " ++ name ++ " where\n"
+            ++ "  fromJSVal = return . fmap " ++ name ++ " . maybeJSNullOrUndefined\n"
+            ++ "  {-# INLINE fromJSVal #-}\n\n"
 
             ++ (if name `elem` allParents
                     then "class " ++ head (map ("Is"++) (rights parents) ++ ["IsGObject"]) ++ " o => Is" ++ name ++ " o\n"
@@ -267,7 +267,7 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
 
 prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
-     : map prettyDecl decls >>= lines >>= gaurdFromJSRefUnchecked
+     : map prettyDecl decls >>= lines >>= gaurdFromJSValUnchecked
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = prettyPrint d
     prettyDecl d@(H.HsTypeSig _ [H.HsIdent n] _) = concat $ catMaybes [comment n, Just $ prettyPrint d]
@@ -283,11 +283,11 @@ prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
                         Just ('\'':_) -> ""
                         _ -> s
     fix = fix' "new" . fix' "newSync" . fix' "newAsync"
---    gaurdFromJSRefUnchecked "        fromJSRefUnchecked = return . pFromJSRef" =
+--    gaurdFromJSValUnchecked "        fromJSValUnchecked = return . pFromJSVal" =
 --        [ "#if MIN_VERSION_ghcjs_base(0,2,0)"
---        , "        fromJSRefUnchecked = return . pFromJSRef"
+--        , "        fromJSValUnchecked = return . pFromJSVal"
 --        , "#endif" ]
-    gaurdFromJSRefUnchecked line = [line]
+    gaurdFromJSValUnchecked line = [line]
 
 --    comment n = do
 --        iname <- interfaceName
@@ -368,11 +368,11 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                (map (mkModImport . H.Module) ([
                       "Prelude ((.), (==), (>>=), return, IO, Int, Float, Double, Bool(..), Maybe, maybe, fromIntegral, round, fmap, Show, Read, Eq, Ord)"
                     , "Data.Typeable (Typeable)"
-                    , "GHCJS.Types (JSRef(..), JSString)"
+                    , "GHCJS.Types (JSVal(..), JSString)"
                     , "GHCJS.Foreign (jsNull)"
                     , "GHCJS.Foreign.Callback (syncCallback, asyncCallback, syncCallback1, asyncCallback1, syncCallback2, asyncCallback2, OnBlocked(..))"
-                    , "GHCJS.Marshal (ToJSRef(..), FromJSRef(..))"
-                    , "GHCJS.Marshal.Pure (PToJSRef(..), PFromJSRef(..))"
+                    , "GHCJS.Marshal (ToJSVal(..), FromJSVal(..))"
+                    , "GHCJS.Marshal.Pure (PToJSVal(..), PFromJSVal(..))"
                     , "Control.Monad.IO.Class (MonadIO(..))"
                     , "Data.Int (Int64)"
                     , "Data.Word (Word, Word64)"
@@ -608,26 +608,26 @@ intf2type :: I.Defn -> [H.HsDecl]
 intf2type (I.TypeDecl (I.TyEnum (Just (I.Id typename)) vals)) =
     [H.HsDataDecl nullLoc [] (H.HsIdent $ "Enums||" ++ typename) []
       (map constructor vals) (map (H.UnQual . H.HsIdent) ["Show", "Read", "Eq", "Ord", "Typeable"]),
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||PToJSRef")
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||PToJSVal")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
-        [H.HsFunBind (map ptoJsRef vals)],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||ToJSRef")
+        [H.HsFunBind (map ptoJsVal vals)],
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||ToJSVal")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
         [H.HsFunBind
-            [H.HsMatch nullLoc (H.HsIdent "toJSRef") []
-                (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "pToJSRef")) []
+            [H.HsMatch nullLoc (H.HsIdent "toJSVal") []
+                (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "pToJSVal")) []
             ]
         ],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||PFromJSRef")
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||PFromJSVal")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
-        [H.HsFunBind (map pfromJsRef vals)],
-     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||FromJSRef")
+        [H.HsFunBind (map pfromJsVal vals)],
+     H.HsInstDecl nullLoc [] (H.UnQual $ H.HsIdent "Enums||FromJSVal")
         [H.HsTyCon . H.UnQual $ H.HsIdent typename]
         [H.HsFunBind
-            [H.HsMatch nullLoc (H.HsIdent "fromJSRefUnchecked") []
-                (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "pFromJSRef")) [],
-             H.HsMatch nullLoc (H.HsIdent "fromJSRef") []
-                (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "pFromJSRef")) []
+            [H.HsMatch nullLoc (H.HsIdent "fromJSValUnchecked") []
+                (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "pFromJSVal")) [],
+             H.HsMatch nullLoc (H.HsIdent "fromJSVal") []
+                (H.HsUnGuardedRhs $ H.HsInfixApp (mkVar "return") (H.HsQVarOp $ mkSymbol ".") (mkVar "pFromJSVal")) []
             ]
         ]
     ]
@@ -638,18 +638,18 @@ intf2type (I.TypeDecl (I.TyEnum (Just (I.Id typename)) vals)) =
     jsffi (Right n, _, Nothing) = H.HsForeignImport nullLoc "javascript" H.HsUnsafe
         ("\"" ++ n ++ "\"")
         (H.HsIdent $ "Enums||js_" ++ typename ++ conName n)
-        (mkTIdent "JSRef")
+        (mkTIdent "JSVal")
     jsffi val = error $ "Unhandled enum value " ++ show val
-    ptoJsRef (Right n, _, Nothing) =
-        H.HsMatch nullLoc (H.HsIdent "pToJSRef") [H.HsPVar . H.HsIdent $ typename ++ conName n]
+    ptoJsVal (Right n, _, Nothing) =
+        H.HsMatch nullLoc (H.HsIdent "pToJSVal") [H.HsPVar . H.HsIdent $ typename ++ conName n]
             (H.HsUnGuardedRhs . mkVar $ "js_" ++ typename ++ conName n) []
-    ptoJsRef val = error $ "Unhandled enum value " ++ show val
-    pfromJsRef (Right n, _, Nothing) =
-        H.HsMatch nullLoc (H.HsIdent "pFromJSRef") [H.HsPVar $ H.HsIdent "x"]
+    ptoJsVal val = error $ "Unhandled enum value " ++ show val
+    pfromJsVal (Right n, _, Nothing) =
+        H.HsMatch nullLoc (H.HsIdent "pFromJSVal") [H.HsPVar $ H.HsIdent "x"]
             (H.HsGuardedRhss [H.HsGuardedRhs nullLoc
                 (H.HsInfixApp (mkVar "x") (H.HsQVarOp $ mkSymbol "`js_eq`") (mkVar $ "js_" ++ typename ++ conName n))
                 (H.HsVar . H.UnQual . H.HsIdent $ typename ++ conName n)]) []
-    pfromJsRef val = error $ "Unhandled enum value " ++ show val
+    pfromJsVal val = error $ "Unhandled enum value " ++ show val
     conName = concatMap conPart . splitOn "-"
     conPart (initial : rest) = toUpper initial : rest
     conPart [] = ""
@@ -1013,7 +1013,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ (I.Operation (I.FunId _ _ parm) res
                           H.HsInfixApp
                             (mkVar $ getDef intf)
                             (H.HsQVarOp (H.UnQual (H.HsSymbol ".")))
-                            (mkVar "pToJSRef")
+                            (mkVar "pToJSVal")
                           )
                           (H.HsQVarOp (H.UnQual (H.HsSymbol "<$>")))
           callbackN | null parm = ""
@@ -1032,7 +1032,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ (I.Operation (I.FunId _ _ parm) res
           applyCParam e param =
             H.HsInfixApp
               (H.HsApp
-                (mkVar "fromJSRefUnchecked")
+                (mkVar "fromJSValUnchecked")
                 (mkVar (paramName param))
               )
               (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
@@ -1251,9 +1251,9 @@ tyRet' pname enums False (I.TyOptional t@(I.TyName c Nothing)) ext
     | isNothing (asIs [] (const False) False c) = tyRet' pname enums False t ext
 tyRet' pname enums False (I.TyOptional t) ext
     = H.HsTyApp (mkTIdent "Maybe") (tyRet' pname enums False t ext)
---tyRet ffi (I.TySafeArray t) | ffi = H.HsTyApp (mkTIdent "JSRef") (mkTyList $ tyRet ffi t)
+--tyRet ffi (I.TySafeArray t) | ffi = H.HsTyApp (mkTIdent "JSVal") (mkTyList $ tyRet ffi t)
 --                            | otherwise = mkTyList (tyRet ffi t)
---tyRet ffi (I.TySequence t _)| ffi = H.HsTyApp (mkTIdent "JSRef") (mkTyList $ tyRet ffi t)
+--tyRet ffi (I.TySequence t _)| ffi = H.HsTyApp (mkTIdent "JSVal") (mkTyList $ tyRet ffi t)
 --                            | otherwise = mkTyList (tyRet ffi t)
 tyRet' pname enums False (I.TySafeArray t) ext = mkTyList (tyRet' pname enums False t ext)
 tyRet' pname enums False (I.TySequence t _) ext = mkTyList (tyRet' pname enums False t ext)
@@ -1279,10 +1279,10 @@ tyRet' _ _ ffi (I.TyApply _ (I.TyInteger LongLong)) _ | ffi = mkTIdent "Double"
 tyRet' _ _ _ (I.TyApply _ (I.TyInteger _)) _ = mkTIdent "Int"
 tyRet' _ _ ffi (I.TyObject) _ | ffi = H.HsTyApp (mkTIdent "Nullable") (mkTIdent "GObject")
                               | otherwise = H.HsTyApp (mkTIdent "Maybe") (mkTIdent "GObject")
-tyRet' _ _ _ (I.TyAny) _ = mkTIdent "JSRef"
+tyRet' _ _ _ (I.TyAny) _ = mkTIdent "JSVal"
 tyRet' _ enums True (I.TyOptional (I.TyInteger LongLong)) _ = H.HsTyApp (mkTIdent "Nullable") (mkTIdent "Double")
 tyRet' _ enums True (I.TyOptional (I.TyApply _ (I.TyInteger LongLong))) _ = H.HsTyApp (mkTIdent "Nullable") (mkTIdent "Double")
-tyRet' _ enums True t ext = mkTIdent "JSRef"
+tyRet' _ enums True t ext = mkTIdent "JSVal"
 tyRet' _ _ _ t _ = error $ "Return type " ++ show t
 
 eventTyRet :: (String -> Bool) -> String -> String -> H.HsType
@@ -1348,7 +1348,7 @@ tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In] ext)
    case ptype of
     I.TyOptional t | ffi -> lookup t
 --        case lookup t of
---            (H.HsTyApp (H.HsTyVar (H.HsIdent "JSRef")) a, b) -> (H.HsTyApp (mkTIdent "JSRef")
+--            (H.HsTyApp (H.HsTyVar (H.HsIdent "JSVal")) a, b) -> (H.HsTyApp (mkTIdent "JSVal")
 --                                                                (H.HsTyApp (mkTIdent "Maybe") a), b)
 --            (hsType, hsAsst) -> (H.HsTyApp (mkTIdent "Maybe") hsType, hsAsst)
     I.TyOptional t@(I.TyName c Nothing) | typeFor c == "DOMString" -> lookup t
@@ -1356,9 +1356,9 @@ tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In] ext)
         case lookup t of
             r@(H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _, _) -> r
             (hsType, hsAsst) -> (H.HsTyApp (mkTIdent "Maybe") hsType, hsAsst)
-    I.TySequence t _ | ffi -> (mkTIdent "JSRef", [])
+    I.TySequence t _ | ffi -> (mkTIdent "JSVal", [])
                      | otherwise -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
-    I.TySafeArray t | ffi -> (mkTIdent "JSRef", [])
+    I.TySafeArray t | ffi -> (mkTIdent "JSVal", [])
                     | otherwise -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
     I.TyName c Nothing | c `elem` ["NotificationPermissionCallback", "StringCallback"] -> if
                                  | ffi -> (H.HsTyApp (mkTIdent "Nullable")
@@ -1371,8 +1371,8 @@ tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In] ext)
 --                                 | optional == I.Optional -> (H.HsTyApp (mkTIdent "Maybe") p, [(mkUIdent "ToJSString", [p])])
                                  | canBeNull -> (H.HsTyApp (mkTIdent "Maybe") p, [(mkUIdent "ToJSString", [p])])
                                  | otherwise -> (p, [(mkUIdent "ToJSString", [p])])
-    I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSRef", [])
-                                    | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSRef", [p])])
+    I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSVal", [])
+                                    | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSVal", [p])])
     I.TyName "GLintptr" Nothing | ffi -> (mkTIdent "Double",[])
     I.TyName "GLsizeiptr" Nothing | ffi -> (mkTIdent "Double",[])
     I.TyName "GLint64" Nothing | ffi -> (mkTIdent "Double",[])
@@ -1392,7 +1392,7 @@ tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In] ext)
     I.TyApply _ (I.TyInteger LongLong) | ffi -> (mkTIdent "Double",[])
                                        | otherwise -> (mkTIdent "Int64",[])
     I.TyApply _ (I.TyInteger _) -> (mkTIdent "Int",[])
-    I.TyAny -> (mkTIdent "JSRef",[])
+    I.TyAny -> (mkTIdent "JSVal",[])
     _ | ffi -> let (hsType, hsAsst) = tyParm' enums isLeaf False param in (hsType, hsAsst)
     t -> error $ "Param type " ++ show t
 
@@ -1408,7 +1408,7 @@ asIs :: [String] -> (String -> Bool) -> Bool -- ^ Is JSFFI call
     -> String -> Maybe H.HsType
 asIs enums isLeaf ffi = asIs' enums isLeaf ffi . typeFor
   where
-    asIs' enums _ ffi a  | a `elem` enums = Just $ if ffi then mkTIdent "JSRef" else mkTIdent a
+    asIs' enums _ ffi a  | a `elem` enums = Just $ if ffi then mkTIdent "JSVal" else mkTIdent a
     asIs' _ isLeaf ffi a | isLeaf a       = Just $ if ffi then H.HsTyApp (mkTIdent "Nullable") (mkTIdent a) else H.HsTyApp (mkTIdent "Maybe") (mkTIdent a)
     asIs' _ _ _ "DOMString"               = Just $ mkTIdent "String"
     asIs' _ _ _ "DOMTimeStamp"            = Just $ mkTIdent "Word"
@@ -1448,7 +1448,7 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
     I.TyOptional (I.TySequence t _) ->
         H.HsInfixApp
           (H.HsApp
-            (mkVar "toJSRef")
+            (mkVar "toJSVal")
             (mkVar (paramName param))
           )
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
@@ -1458,7 +1458,7 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
     I.TySequence t _ ->
         H.HsInfixApp
           (H.HsApp
-            (mkVar "toJSRef")
+            (mkVar "toJSVal")
             (mkVar (paramName param))
           )
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
@@ -1468,7 +1468,7 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
     I.TySafeArray t ->
         H.HsInfixApp
           (H.HsApp
-            (mkVar "toJSRef")
+            (mkVar "toJSVal")
             (mkVar (paramName param))
           )
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
@@ -1494,7 +1494,7 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
     I.TyName "DOMString..." Nothing ->
         H.HsInfixApp
           (H.HsApp
-            (mkVar "toJSRef")
+            (mkVar "toJSVal")
             (mkVar (paramName param))
           )
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
@@ -1514,7 +1514,7 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
         call
         (H.HsParen
           (H.HsApp
-            (mkVar "pToJSRef")
+            (mkVar "pToJSVal")
             pname
           )
         )
@@ -1560,8 +1560,8 @@ returnType _ (I.TyName "DOMString" Nothing) ext e
      || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext
         = H.HsApp (H.HsApp (mkVar "fromMaybeJSString") (mkVar "<$>")) (H.HsParen e)
     | otherwise = H.HsApp (H.HsApp (mkVar "fromJSString") (mkVar "<$>")) (H.HsParen e)
---returnType (I.TySafeArray (I.TyName "DOMString" Nothing)) _ e = H.HsApp (H.HsApp (mkVar "fromJSRef") (mkVar "<$>")) (H.HsParen e)
---returnType (I.TySequence (I.TyName "DOMString" Nothing) _) _ e = H.HsApp (H.HsApp (mkVar "fromJSRef") (mkVar "<$>")) (H.HsParen e)
+--returnType (I.TySafeArray (I.TyName "DOMString" Nothing)) _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
+--returnType (I.TySequence (I.TyName "DOMString" Nothing) _) _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
 returnType _ (I.TyName "DOMTimeStamp" Nothing) _ e = e
 returnType _ (I.TyName "CompareHow" Nothing) _ e = e
 returnType _ (I.TyName "GLintptr" Nothing) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
@@ -1574,7 +1574,7 @@ returnType enums (I.TyName x Nothing) _ e | x `elem` enums =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
-          (mkVar "fromJSRefUnchecked")
+          (mkVar "fromJSValUnchecked")
 returnType _ (I.TyName x Nothing) _ e =
         H.HsInfixApp
           (mkVar "nullableToMaybe")
@@ -1587,22 +1587,22 @@ returnType _ (I.TyOptional (I.TyInteger LongLong)) _ e =
     H.HsApp (H.HsApp (H.HsApp (H.HsApp (H.HsApp (mkVar "fmap") (mkVar "round")) (mkVar ".")) (mkVar "nullableToMaybe")) (mkVar "<$>")) (H.HsParen e)
 returnType _ (I.TyOptional (I.TyApply _ (I.TyInteger LongLong))) _ e =
     H.HsApp (H.HsApp (H.HsApp (H.HsApp (H.HsApp (mkVar "fmap") (mkVar "round")) (mkVar ".")) (mkVar "nullableToMaybe")) (mkVar "<$>")) (H.HsParen e)
---returnType (I.Ty (I.TyName "DOMString" Nothing)) _ e = H.HsApp (H.HsApp (mkVar "fromJSRef") (mkVar "<$>")) (H.HsParen e)
+--returnType (I.Ty (I.TyName "DOMString" Nothing)) _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
 returnType _ (I.TySafeArray _) _ e =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
-          (mkVar "fromJSRefUnchecked")
+          (mkVar "fromJSValUnchecked")
 returnType _ (I.TySequence _ _) _ e =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
-          (mkVar "fromJSRefUnchecked")
+          (mkVar "fromJSValUnchecked")
 returnType _ (I.TyOptional _) _ e =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
-          (mkVar "fromJSRefUnchecked")
+          (mkVar "fromJSValUnchecked")
 returnType _ (I.TyObject) _ e =
         H.HsInfixApp
           (mkVar "nullableToMaybe")
