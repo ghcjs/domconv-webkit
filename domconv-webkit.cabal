@@ -80,3 +80,11 @@ Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, 
                 Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils, Common
 
 Extensions:     ScopedTypeVariables
+
+Executable:     domconv-webkit-jsaddle
+Main-is:        domconv-webkit-jsaddle.hs
+Hs-source-dirs: ., hdirect-0.21
+Other-Modules:  SplitBounds, BasicTypes, FiniteMap, IDLSyn, IDLToken, IDLUtils, Lex, LexM,
+                Literal, OmgParser, Opts, PP, PreProc, Pretty, SrcLoc, SymbolTable, Utils, Common
+
+Extensions:     ScopedTypeVariables

@@ -1372,7 +1372,7 @@ applyParam enums param@(I.Param _ (I.Id p) ptype [I.Mode In] ext) call = lookup 
             (mkVar "TODO_seqparm")
             (mkVar (paramName param))
           )
-          (H.HsQVarOp (H.UnQual (H.HsSymbol ">>=")))
+          (H.HsQVarOp (mkSymbol ">>="))
           (H.HsLambda nullLoc [H.HsPVar (H.HsIdent $ paramName param ++ "'")]
             (H.HsApp call (mkVar $ paramName param ++ "'"))
           )
