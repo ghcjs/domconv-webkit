@@ -941,7 +941,6 @@ intf2attr enums intf@(I.Interface (I.Id iid') _ cldefs _ _) =
     mkattr (I.Attribute [I.Id "webkitPeerConnection"] _ _ _ _) = []
     mkattr (I.Attribute [I.Id "contentType"] _ _ _ _) | iid == "Document" = []
     mkattr (I.Attribute [I.Id "pointerLockElement"] _ _ _ _) | iid == "Document" = []
-    mkattr (I.Attribute [I.Id "activeElement"] _ _ _ _) | iid == "Document" = []
     mkattr (I.Attribute [I.Id "origin"] _ _ _ _) | iid == "Document" = []
     mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "Custom") [] `elem` ext = []
     mkattr (I.Attribute _ _ _ _ ext) | I.ExtAttr (I.Id "CustomSetter") [] `elem` ext = []

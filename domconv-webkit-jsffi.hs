@@ -59,10 +59,11 @@ makeWebkitBindings idl args = do
     putStrLn $ "Processing IDL: " ++ idl ++ " args " ++ show args
     prntmap <- processIDL idl args
     -- let reversedMap = M.fromListWith S.union $ map (\(a,b)->(a,S.singleton b)) prntmap
-    fixHierarchy prntmap "src/GHCJS/DOM/Types.hs" ffiTypes
+    jsffiFixHierarchy prntmap "src/GHCJS/DOM/Types.hs" jsffiTypes
+    webkitFixHierarchy prntmap "webkit/GHCJS/DOM/Types.hs" webkitTypes
     exitSuccess
   where
-    fixHierarchy prntmap hierarchyFile printTypes = do
+    jsffiFixHierarchy prntmap hierarchyFile printTypes = do
         hh <- openFile (hierarchyFile ++ ".new") WriteMode
         current <- readFile hierarchyFile
         let startGuard = "-- AUTO GENERATION STARTS HERE"
@@ -73,8 +74,27 @@ makeWebkitBindings idl args = do
         mapM_ (hPutStrLn hh) start
         hPutStrLn hh startGuard
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $ ffiExports (typeFor n) allParents
-        hPutStrLn hh $ "#else\n"
-            ++ "    propagateGError, GType(..), DOMString(..), ToDOMString(..), FromDOMString(..)\n"
+        mapM_ (hPutStrLn hh) middle
+        hPutStrLn hh startGuard
+        hPutStrLn hh "-- The remainder of this file is generated from IDL files using domconv-webkit-jsffi"
+        printTypes hh prntmap allParents
+
+        hClose hh
+        renameFile hierarchyFile (hierarchyFile ++ ".old")
+        renameFile (hierarchyFile ++ ".new") hierarchyFile
+
+    webkitFixHierarchy prntmap hierarchyFile printTypes = do
+        hh <- openFile (hierarchyFile ++ ".new") WriteMode
+        current <- readFile hierarchyFile
+        let startGuard = "-- AUTO GENERATION STARTS HERE"
+            endGuard   = "-- AUTO GENERATION ENDS HERE"
+            (start, rest) = span (/= startGuard) $ lines current
+            middle = takeWhile (/= startGuard) $ dropWhile (/= endGuard) rest
+            allParents = nub $ concatMap (rights . snd) prntmap
+        mapM_ (hPutStrLn hh) start
+        hPutStrLn hh startGuard
+        hPutStrLn hh $
+               "    propagateGError, GType(..), DOMString(..), ToDOMString(..), FromDOMString(..)\n"
             ++ "  , FocusEvent\n"
             ++ "  , TouchEvent\n"
             ++ "  , module Graphics.UI.Gtk.WebKit.Types\n"
@@ -86,24 +106,6 @@ makeWebkitBindings idl args = do
         hPutStrLn hh "-- The remainder of this file is generated from IDL files using domconv-webkit-jsffi"
         printTypes hh prntmap allParents
 
---        let underscore "HTMLIFrameElement" = "html_iframe_element"
---            underscore "XPathExpression" = "xpath_expression"
---            underscore "XPathNSResolver" = "xpath_ns_resolver"
---            underscore "XPathResult" = "xpath_result"
---            underscore "WebKitNamedFlow" = "webkit_named_flow"
---            underscore "WebKitPoint" = "webkit_point"
---            underscore "WebKitAnimation" = "webkit_animation"
---            underscore "WebKitAnimationList" = "webkit_animation_list"
---            underscore c = U.toUnderscoreCamel c
---            hierarchy n parent =
---                case M.lookup parent reversedMap of
---                    Just s -> do
---                        forM_ (S.toList s) $ \child -> do
---                            hPutStrLn hh $ replicate n ' ' ++ "WebKitDOM" ++ child ++ " as " ++ typeFor child
---                                    ++ ", webkit_dom_" ++ map toLower (underscore child) ++ "_get_type if webkit-dom"
---                            hierarchy (n+4) child
---                    _ -> return ()
---        hierarchy 8 ""
         hClose hh
         renameFile hierarchyFile (hierarchyFile ++ ".old")
         renameFile (hierarchyFile ++ ".new") hierarchyFile
@@ -113,11 +115,10 @@ makeWebkitBindings idl args = do
             ++ (if name `elem` allParents then ", Is" ++ name ++ ", to" ++ name else "") ++ ", "
             ++ "castTo" ++ name ++ ", " ++ "gType" ++ name
 
-    ffiTypes hh prntmap allParents =
+    jsffiTypes hh prntmap allParents =
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
             let name = typeFor n in
-            "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
-            ++ "-- | Functions for this inteface are in \"GHCJS.DOM." ++ name ++ "\".\n"
+            "-- | Functions for this inteface are in \"GHCJS.DOM." ++ name ++ "\".\n"
             ++ (
                 if null parents
                     then ""
@@ -162,12 +163,15 @@ makeWebkitBindings idl args = do
             ++ "  unsafeCastGObject = " ++ name ++ " . unGObject\n"
             ++ "  {-# INLINE unsafeCastGObject #-}\n\n"
 
-            ++ "castTo" ++ name ++ " :: IsGObject obj => obj -> " ++ name ++ "\n"
+            ++ "castTo" ++ name ++ " :: IsGObject obj => obj -> IO " ++ name ++ "\n"
             ++ "castTo" ++ name ++ " = castTo gType" ++ name ++ " \"" ++ name ++ "\"\n\n"
 
             ++ "foreign import javascript unsafe \"window[\\\"" ++ jsname name ++ "\\\"]\" gType" ++ name ++ " :: GType\n"
-            ++ (if inWebKitGtk name then "#else\n" ++ oldWebKitGuard name ("type Is" ++ name ++ " o = " ++ name ++ "Class o\n") else "")
-            ++ "#endif\n\n"
+    webkitTypes hh prntmap allParents =
+        forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
+            let name = typeFor n in
+               (if inWebKitGtk name then oldWebKitGuard name ("type Is" ++ name ++ " o = " ++ name ++ "Class o\n") else "")
+            ++ "\n"
     oldWebKitGuard name s | webkitTypeGuard name /= "webkit-dom" = "#ifndef USE_OLD_WEBKIT\n" ++ s ++ "#endif\n"
                           | otherwise = s
 
@@ -240,8 +244,6 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
   let components = U.split '.' $ modName modid
       name = components !! 2
 
-  createDirectoryIfMissing True "src/GHCJS/DOM"
-  createDirectoryIfMissing True "src/GHCJS/DOM/JSFFI"
   createDirectoryIfMissing True "src/GHCJS/DOM/JSFFI/Generated"
 
   customFileExists <- doesFileExist $ "src/GHCJS/DOM/JSFFI" </> name ++ ".hs"
@@ -251,19 +253,27 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
         "{-# LANGUAGE PatternSynonyms, ForeignFunctionInterface, JavaScriptFFI #-}\n"
      ++ prettyJS (H.HsModule loc (H.Module $ "GHCJS.DOM.JSFFI.Generated." ++ name) exp imp decl) comment
   Prelude.writeFile (intercalate "/" ("src" : components) ++ ".hs") $
-        "{-# LANGUAGE CPP #-}\n"
-     ++ "module " ++ modName modid ++ " (\n"
-     ++ "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
+        "module " ++ modName modid ++ " (\n"
      ++ "  module " ++ jsffiModule ++ "\n"
-     ++ "#else\n"
-     ++ (if moduleInWebKitGtk name then "  module Graphics.UI.Gtk.WebKit.DOM." ++ name ++ "\n" else "")
-     ++ "#endif\n"
      ++ "  ) where\n"
-     ++ "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
      ++ "import " ++ jsffiModule ++ "\n"
-     ++ "#else\n"
+
+  createDirectoryIfMissing True "webkit/GHCJS/DOM"
+
+  Prelude.writeFile (intercalate "/" ("webkit" : components) ++ ".hs") $
+        "module " ++ modName modid ++ " (\n"
+     ++ (if moduleInWebKitGtk name then "  module Graphics.UI.Gtk.WebKit.DOM." ++ name ++ "\n" else "")
+     ++ "  ) where\n"
      ++ (if moduleInWebKitGtk name then "import Graphics.UI.Gtk.WebKit.DOM." ++ name ++ "\n" else "")
-     ++ "#endif\n"
+
+  createDirectoryIfMissing True "jsaddle/GHCJS/DOM"
+
+  Prelude.writeFile (intercalate "/" ("jsaddle" : components) ++ ".hs") $
+        "module " ++ modName modid ++ " (\n"
+     ++ "  module Language.Javascript.JSaddle.DOM." ++ name ++ "\n"
+     ++ "  ) where\n"
+     ++ "import Language.Javascript.JSaddle.DOM." ++ name ++ "\n"
+
 
 prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
