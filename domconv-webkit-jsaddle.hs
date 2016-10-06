@@ -59,7 +59,7 @@ makeWebkitBindings idl args = do
     putStrLn $ "Processing IDL: " ++ idl ++ " args " ++ show args
     prntmap <- processIDL idl args
     -- let reversedMap = M.fromListWith S.union $ map (\(a,b)->(a,S.singleton b)) prntmap
-    fixHierarchy prntmap "src/Language/Javascript/JSaddle/DOM/Types.hs" ffiTypes
+    fixHierarchy prntmap "src/JSDOM/Types.hs" ffiTypes
     exitSuccess
   where
     fixHierarchy prntmap hierarchyFile printTypes = do
@@ -117,13 +117,13 @@ makeWebkitBindings idl args = do
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
             let name = typeFor n in
             "#if (defined(ghcjs_HOST_OS) && defined(USE_JAVASCRIPTFFI)) || !defined(USE_WEBKIT)\n"
-            ++ "-- | Functions for this inteface are in \"Language.Javascript.JSaddle.DOM." ++ name ++ "\".\n"
+            ++ "-- | Functions for this inteface are in \"JSDOM." ++ name ++ "\".\n"
             ++ (
                 if null parents
                     then ""
                     else "-- Base interface functions are in:\n"
                             ++ "--\n"
-                            ++ concatMap (\parent -> "--     * \"Language.Javascript.JSaddle.DOM." ++ parent ++ "\"\n") (rights parents)
+                            ++ concatMap (\parent -> "--     * \"JSDOM." ++ parent ++ "\"\n") (rights parents)
             )
             ++ "--\n"
             ++ "-- <https://developer.mozilla.org/en-US/docs/Web/API/"
@@ -206,7 +206,7 @@ procopts idl opts = do
   let modst = DOMState {
          pm = prntmap
         ,imp = []
-        ,ns = "Language.Javascript.JSaddle.DOM." -- this will be the default namespace unless a pragma namespace is used.
+        ,ns = "JSDOM." -- this will be the default namespace unless a pragma namespace is used.
         ,procmod = []
         ,convlog = []
       }
@@ -242,17 +242,19 @@ putSplit :: (H.HsModule, String -> Maybe String) -> IO ()
 
 putSplit (H.HsModule loc modid exp imp decl, comment) = do
   let components = U.split '.' $ modName modid
-      name = components !! 4
+      name = components !! 1
 
-  createDirectoryIfMissing True "src/Language/Javascript/JSaddle/DOM"
-  createDirectoryIfMissing True "src/Language/Javascript/JSaddle/DOM/Generated"
+  createDirectoryIfMissing True "src/JSDOM"
+  createDirectoryIfMissing True "src/JSDOM/Generated"
 
-  customFileExists <- doesFileExist $ "src/Language/Javascript/JSaddle/DOM/Custom" </> name ++ ".hs"
-  let jsffiModule = "Language.Javascript.JSaddle.DOM." ++ (if customFileExists then "Custom." else "Generated.") ++ name
+  customFileExists <- doesFileExist $ "src/JSDOM/Custom" </> name ++ ".hs"
+  let jsffiModule = "JSDOM." ++ (if customFileExists then "Custom." else "Generated.") ++ name
 
-  Prelude.writeFile ("src/Language/Javascript/JSaddle/DOM/Generated" </> name ++ ".hs") $
+  Prelude.writeFile ("src/JSDOM/Generated" </> name ++ ".hs") $
         "{-# LANGUAGE PatternSynonyms #-}\n"
-     ++ prettyJS (H.HsModule loc (H.Module $ "Language.Javascript.JSaddle.DOM.Generated." ++ name) exp imp decl) comment
+     ++ "{-# OPTIONS_GHC -fno-warn-unused-imports #-}\n"
+     ++ prettyJS (H.HsModule loc (H.Module $ "JSDOM.Generated." ++ name) exp imp decl) comment
+     ++ "\n"
   Prelude.writeFile (intercalate "/" ("src" : components) ++ ".hs") $
         "module " ++ modName modid ++ " (\n"
      ++ "  module " ++ jsffiModule ++ "\n"
@@ -266,7 +268,7 @@ prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = prettyPrint d
     prettyDecl d@(H.HsTypeSig _ [H.HsIdent n] _) = concat $ catMaybes [comment n, Just $ prettyPrint d]
     prettyDecl d = prettyPrint d
-    interfaceName = stripPrefix "Language.Javascript.JSaddle.DOM." $ modName m
+    interfaceName = stripPrefix "JSDOM." $ modName m
     prefix = U.toLowerInitCamel <$> interfaceName
     stripCamelPrefix p s = case stripPrefix p s of
                                 Just r@(x:xs) | isUpper x -> r
@@ -365,13 +367,13 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                     , "Language.Javascript.JSaddle (JSM(..), JSVal(..), JSString, strictEqual, toJSVal, valToStr, valToNumber, valToBool, js, jss, jsf, jsg, function, new, array)"
                     , "Data.Int (Int64)"
                     , "Data.Word (Word, Word64)"
-                    , "Language.Javascript.JSaddle.DOM.Types"
+                    , "JSDOM.Types"
                     , "Control.Applicative ((<$>))"
                     , "Control.Monad (void)"
                     , "Control.Lens.Operators ((^.))"
                     ] ++ if name == "Enums"
                             then []
-                            else eventImp iid ++ ["Language.Javascript.JSaddle.DOM.Enums"]))
+                            else eventImp iid ++ ["JSDOM.Enums"]))
                (H.HsFunBind [] : map fst smdecls), comment) where
       renameMap :: M.Map String String
       renameMap = M.fromList $ concatMap snd smdecls
@@ -382,7 +384,7 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                         Nothing -> ""
       comment :: String -> Maybe String
       comment n = do
-        iname <- stripPrefix "Language.Javascript.JSaddle.DOM." iid
+        iname <- stripPrefix "JSDOM." iid
         return $ "\n-- | <https://developer.mozilla.org/en-US/docs/Web/API/"
                       ++ jsname iname ++ realName n ++ " Mozilla " ++ jsname iname ++ realName n ++ " documentation>"
       name = typeFor . reverse . takeWhile (/= '.') $ reverse iid
@@ -394,11 +396,11 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                     _ -> map (H.HsEVar . H.UnQual . H.HsIdent) ([name, "castTo" ++ name, "gType" ++ name] ++ parentExp)
       parentExp | name `elem` allParents = ["Is" ++ name, "to" ++ name]
                 | otherwise = []
-      eventImp "Language.Javascript.JSaddle.DOM.Event" = []
-      eventImp "Language.Javascript.JSaddle.DOM.UIEvent" = []
-      eventImp "Language.Javascript.JSaddle.DOM.MouseEvent" = []
-      eventImp "Language.Javascript.JSaddle.DOM.EventTarget" = []
-      eventImp _ = ["Language.Javascript.JSaddle.DOM.EventTargetClosures (EventName, unsafeEventName)"]
+      eventImp "JSDOM.Event" = []
+      eventImp "JSDOM.UIEvent" = []
+      eventImp "JSDOM.MouseEvent" = []
+      eventImp "JSDOM.EventTarget" = []
+      eventImp _ = ["JSDOM.EventTargetClosures (EventName, unsafeEventName)"]
       docimp = []
 --      docimp = case "createElement" `elem` (map declname smdecls) of
 --        True -> []
@@ -1026,7 +1028,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ (I.Operation (I.FunId _ _ parm) res
                           (H.HsQVarOp (mkSymbol "<$>"))
           callbackN = show (length parm)
           lambda = H.HsParen (H.HsLambda nullLoc cparms (L.foldl applyCParam (mkVar "callback") parm))
-          call _ = H.HsApp (H.HsApp (mkVar "function") (H.HsLit $ H.HsString "")) lambda
+          call _ = H.HsApp (mkVar "function") lambda
           rhs = H.HsUnGuardedRhs $ liftDOM $
                 H.HsInfixApp
                     (H.HsInfixApp
@@ -1147,13 +1149,13 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at _) =
           -- ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op parm
           parms = map (H.HsPVar . H.HsIdent) ("self" : map paramName parm)
           call = applySelf isLeaf (getDef intf) (H.HsApp
-                    (mkVar (if null parm then "js" else "jsf"))
+                    (mkVar "jsf")
                     (H.HsLit . H.HsString $ getDef op))
           -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
           rhs = H.HsUnGuardedRhs $ liftDOM $ returnType enums optype ext $ propExcept raises
             -- $ L.foldl (flip $ applyParam enums isLeaf) call parm
                     $ if null parm
-                        then call
+                        then H.HsApp call (mkVar "()")
                         else H.HsApp call (H.HsList (map applyParam parm))
 --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
