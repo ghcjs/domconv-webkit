@@ -380,9 +380,11 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                     , "GHCJS.Foreign.Callback (syncCallback, asyncCallback, syncCallback1, asyncCallback1, syncCallback2, asyncCallback2, OnBlocked(..))"
                     , "GHCJS.Marshal (ToJSVal(..), FromJSVal(..))"
                     , "GHCJS.Marshal.Pure (PToJSVal(..), PFromJSVal(..))"
+                    , "Control.Monad (void)"
                     , "Control.Monad.IO.Class (MonadIO(..))"
                     , "Data.Int (Int64)"
                     , "Data.Word (Word, Word64)"
+                    , "Data.Maybe (fromJust)"
                     , "GHCJS.DOM.Types"
                     , "Control.Applicative ((<$>))"
                     ] ++ if name == "Enums"
@@ -851,7 +853,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           parms = [H.HsPVar $ H.HsIdent "self", H.HsPVar $ H.HsIdent "val"]
           call = applySelf isLeaf iid ffi
           val = I.Param I.Required (I.Id "val") tat [I.Mode In] ext
-          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ propExcept (I.setterRaises raises) $ applyParam enums isLeaf val call
+          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ applyParam enums isLeaf val call
           match = H.HsMatch nullLoc (H.HsIdent defset) parms rhs [] in
       H.HsFunBind [match]
     stsig iid iat tat ext =
@@ -863,31 +865,36 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
-    mkgetter iid iat tat ext r = [gjsffi iid iat tat ext, gtsig iid iat tat ext, gimpl iid iat tat ext r]
-    gjsffi iid iat tat ext =
-      let monadtv = mkTIdent "IO"
-          defop = iid ++ "|" ++ iat ++ "|" ++ "js_" ++ getf intf iat
-          parms = [ffiTySelf intf]
-          tpsig = mkTsig parms (H.HsTyApp monadtv $ tyRet enums True tat ext)
-          retts = H.HsQualType [] tpsig
-          jsimpl = show . renderJs . jsReturn tat $ [jmacroE| $1[`(iat)`] |] in
-       H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
-    gimpl iid iat tat ext raises =
-      let defget = iid ++ "|" ++ iat ++ "|" ++ getf intf iat
-          ffi = H.HsVar . H.UnQual . H.HsIdent $ "js_" ++ getf intf iat
-          parm = H.HsPVar $ H.HsIdent "self"
-          call = applySelf isLeaf iid ffi
-          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums tat ext $ propExcept (I.getterRaises raises) call
-          match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
-      H.HsFunBind [match]
-    gtsig iid iat tat ext =
-      let monadtv = mkTIdent "m"
-          defget = iid ++ "|" ++ iat ++ "|" ++ getf intf iat
-          parms = [tySelf isLeaf iid]
-          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf iid ++ ctxRet tat
-          tpsig = mkTsig parms (H.HsTyApp monadtv $ tyRet enums False tat ext)
-          retts = H.HsQualType contxt tpsig in
-      H.HsTypeSig nullLoc [H.HsIdent defget] retts
+    mkgetter iid iat tat ext r =
+        gjsffi : concatMap (\wrapType -> gtsig wrapType (rawReturn wrapType) ++ gimpl wrapType (rawReturn wrapType)) [Normal, Unchecked]
+      where
+        gjsffi =
+          let monadtv = mkTIdent "IO"
+              defop = iid ++ "|" ++ iat ++ "|" ++ "js_" ++ getf intf iat
+              parms = [ffiTySelf intf]
+              tpsig = mkTsig parms (H.HsTyApp monadtv $ fromJust $ tyRet enums True tat ext Normal)
+              retts = H.HsQualType [] tpsig
+              jsimpl = show . renderJs . jsReturn tat $ [jmacroE| $1[`(iat)`] |] in
+           H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
+        rawReturn = tyRet enums False tat ext
+        gimpl _ Nothing = []
+        gimpl wrapType (Just retType) =
+          let defget = iid ++ "|" ++ iat ++ "|" ++ wrapName wrapType (getf intf iat)
+              ffi = H.HsVar . H.UnQual . H.HsIdent $ "js_" ++ getf intf iat
+              parm = H.HsPVar $ H.HsIdent "self"
+              call = applySelf isLeaf iid ffi
+              rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums tat ext wrapType call
+              match = H.HsMatch nullLoc (H.HsIdent defget) [parm] rhs [] in
+          [H.HsFunBind [match]]
+        gtsig _ Nothing = []
+        gtsig wrapType (Just retType) =
+          let monadtv = mkTIdent "m"
+              defget = iid ++ "|" ++ iat ++ "|" ++ wrapName wrapType (getf intf iat)
+              parms = [tySelf isLeaf iid]
+              contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf iid ++ ctxRet wrapType tat
+              tpsig = mkTsig parms (H.HsTyApp monadtv retType)
+              retts = H.HsQualType contxt tpsig in
+          [H.HsTypeSig nullLoc [H.HsIdent defget] retts]
     mkevent iid iat = [eventtsig iid iat, eventimpl iid iat]
     eventimpl iid iat =
       let defget = iid ++ "|" ++ iat ++ "|" ++ eventf intf iat
@@ -981,6 +988,12 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
 -- goes last to make monadic composition of actions easier.
 
 data CallbackType = SyncContinueAsync | SyncThrowWouldBlock | Async
+data WrapType = Normal | Underscore | Unchecked deriving (Show, Eq)
+
+wrapName _ [] = error "Empty name passed to wrapName"
+wrapName Normal x = x
+wrapName Underscore x = x ++ "_"
+wrapName Unchecked x = x ++ "Unchecked"
 
 callbackPostfix SyncContinueAsync   = ""
 callbackPostfix SyncThrowWouldBlock = "Sync"
@@ -1088,7 +1101,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at _) =
           parms = map (H.HsPVar . H.HsIdent . paramName) parm
           call = ffi
           rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $
-                  propExcept constructorRaises $ L.foldl (flip $ applyParam enums isLeaf) call parm
+                  L.foldl (flip $ applyParam enums isLeaf) call parm
           match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
       in  [H.HsFunBind [match]]
     mkconst cn@(I.Constant (I.Id cid) _ _ (I.Lit (IntegerLit (ILit base val)))) =
@@ -1099,40 +1112,45 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at _) =
 --    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") [] `elem` ext = []
     mkmeth (I.Operation (I.FunId (I.Id "handleEvent") _ _) _ _ _ exAttr) | getDef intf `notElem` ["EventListener"] = error $ "Unexpected handleEvent function in " ++ show intf
     mkmeth op | skip op = []
-    mkmeth op = jsffi op : tsig op : timpl op
-    jsffi op@(I.Operation (I.FunId _ _ parm) optype _ _ ext) =
-      let monadtv = mkTIdent "IO"
-          defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ jsffiName op parm
-          parms = ffiTySelf intf : map (fst . tyParmFFI enums isLeaf) parm
-          tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet enums True optype ext))
-          retts = H.HsQualType [] tpsig
-          jsimpl = case parm of
-                    [I.Param _ _ (I.TyName "DOMString..." _) _ _] ->
-                        show . renderJs . jsReturn optype $ [jmacroE| $1[`(getDef op)`].apply($1, $2) |]
-                    _ ->
-                        show . renderJs . jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
-                            (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm) in
-       H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
-    tsig op@(I.Operation (I.FunId _ _ parm) optype _ _ ext) =
-      let monadtv = mkTIdent "m"
-          -- exprtv = mkTIdent "Expression"
-          defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ name op parm
-          parms = tySelf isLeaf (getDef intf) : map (fst . tyParm enums isLeaf) parm
-          contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf (getDef intf) ++ concatMap (snd . tyParm enums isLeaf) parm ++ ctxRet optype
-          -- monadctx = (mkUIdent "Monad",[monadtv])
-          tpsig = mkTsig parms (H.HsTyApp monadtv (tyRet enums False optype ext))
-          retts = H.HsQualType contxt tpsig in
-      H.HsTypeSig nullLoc [H.HsIdent defop] retts
-    timpl op@(I.Operation (I.FunId _ _ parm) optype raises _ ext) =
-      let defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ name op parm
-          ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op parm
-          parms = map (H.HsPVar . H.HsIdent) ("self" : map paramName parm)
-          call = applySelf isLeaf (getDef intf) ffi
-          -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
-          rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums optype ext $ propExcept raises $ L.foldl (flip $ applyParam enums isLeaf) call parm
---          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
-          match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
-      in  [H.HsFunBind [match]]
+    mkmeth op@(I.Operation (I.FunId _ _ parm) optype raises _ ext) =
+        jsffi : concatMap (\wrapType -> tsig wrapType (rawReturn wrapType) ++ timpl wrapType (rawReturn wrapType)) [Normal, Underscore, Unchecked]
+      where
+        jsffi =
+          let monadtv = mkTIdent "IO"
+              defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ jsffiName op parm
+              parms = ffiTySelf intf : map (fst . tyParmFFI enums isLeaf) parm
+              tpsig = mkTsig parms (H.HsTyApp monadtv $ fromJust $ tyRet enums True optype ext Normal)
+              retts = H.HsQualType [] tpsig
+              jsimpl = case parm of
+                        [I.Param _ _ (I.TyName "DOMString..." _) _ _] ->
+                            show . renderJs . jsReturn optype $ [jmacroE| $1[`(getDef op)`].apply($1, $2) |]
+                        _ ->
+                            show . renderJs . jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
+                                (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm) in
+           H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
+        rawReturn = tyRet enums False optype ext
+        tsig _ Nothing = []
+        tsig wrapType (Just retType) =
+          let monadtv = mkTIdent "m"
+              -- exprtv = mkTIdent "Expression"
+              defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ wrapName wrapType (name op parm)
+              parms = tySelf isLeaf (getDef intf) : map (fst . tyParm enums isLeaf) parm
+              contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf (getDef intf) ++ concatMap (snd . tyParm enums isLeaf) parm ++ ctxRet wrapType optype
+              -- monadctx = (mkUIdent "Monad",[monadtv])
+              tpsig = mkTsig parms (H.HsTyApp monadtv retType)
+              retts = H.HsQualType contxt tpsig in
+          [H.HsTypeSig nullLoc [H.HsIdent defop] retts]
+        timpl _ Nothing = []
+        timpl wrapType (Just retType) =
+          let defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ wrapName wrapType (name op parm)
+              ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op parm
+              parms = map (H.HsPVar . H.HsIdent) ("self" : map paramName parm)
+              call = applySelf isLeaf (getDef intf) ffi
+              -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
+              rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums optype ext wrapType $ L.foldl (flip $ applyParam enums isLeaf) call parm
+    --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
+              match  = H.HsMatch nullLoc (H.HsIdent defop) parms rhs []
+          in  [H.HsFunBind [match]]
     constructorName = "new" ++ getDef intf
     rawName = getDefHs
     name op parm = rawName op ++ disambiguate (getDef intf) (rawName op) parm
@@ -1234,8 +1252,15 @@ mkTyList = H.HsTyApp (H.HsTyCon $ H.Special H.HsListCon)
 -- Obtain a return type signature from a return type
 
 
-tyRet :: [String] -> Bool -> I.Type -> [I.ExtAttribute] -> H.HsType
-tyRet = tyRet' "result"
+tyRet :: [String] -> Bool -> I.Type -> [I.ExtAttribute] -> WrapType -> Maybe H.HsType
+tyRet enums ffi t ext Normal = Just (tyRet' "result" enums ffi t ext)
+tyRet enums ffi t ext Underscore = case tyRet' "result" enums ffi t ext of
+    H.HsTyTuple [] -> Nothing
+    _ -> Just (H.HsTyTuple [])
+tyRet enums ffi t ext Unchecked = case tyRet' "result" enums ffi t ext of
+    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) (H.HsTyApp (H.HsTyCon (H.Special H.HsListCon)) x)) -> Nothing
+    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) x) -> Just x
+    _ -> Nothing
 
 tyRet' :: String -> [String] -> Bool -> I.Type -> [I.ExtAttribute] -> H.HsType
 
@@ -1322,8 +1347,9 @@ tySelf isLeaf t | isLeaf t  = mkTIdent (typeFor t)
 
 ffiTySelf intf = mkTIdent (typeFor $ getDef intf)
 
-ctxRet :: I.Type -> [H.HsAsst]
-ctxRet = ctxRet' "result"
+ctxRet :: WrapType -> I.Type -> [H.HsAsst]
+ctxRet Underscore _ = []
+ctxRet _ t = ctxRet' "result" t
 
 ctxRet' :: String -> I.Type -> [H.HsAsst]
 
@@ -1561,71 +1587,83 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
 
 applyParam _ _ param@I.Param{} _ = error $ "Unsupported parameter attributes " ++ show param
 
-returnType :: [String] ->  I.Type -> [I.ExtAttribute] -> H.HsExp -> H.HsExp
-returnType _ (I.TyName "DOMString" Nothing) ext e
-    | I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
-     || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext
-        = H.HsApp (H.HsApp (mkVar "fromMaybeJSString") (mkVar "<$>")) (H.HsParen e)
+returnType :: [String] ->  I.Type -> [I.ExtAttribute] -> WrapType -> H.HsExp -> H.HsExp
+returnType _ _ _ Underscore e =
+        H.HsApp
+          (mkVar "void")
+          (H.HsParen e)
+returnType _ (I.TyName "DOMString" Nothing) ext wrapType e
+    |   I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
+     || I.ExtAttr (I.Id "TreatNullAs")               [] `elem` ext
+        = H.HsApp (H.HsApp (
+            (if wrapType == Unchecked
+                then H.HsInfixApp (mkVar "fromJust") (H.HsQVarOp (mkSymbol "."))
+                else id)
+                    (mkVar "fromMaybeJSString")) (mkVar "<$>")) (H.HsParen e)
     | otherwise = H.HsApp (H.HsApp (mkVar "fromJSString") (mkVar "<$>")) (H.HsParen e)
 --returnType (I.TySafeArray (I.TyName "DOMString" Nothing)) _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
 --returnType (I.TySequence (I.TyName "DOMString" Nothing) _) _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyName "DOMTimeStamp" Nothing) _ e = e
-returnType _ (I.TyName "CompareHow" Nothing) _ e = e
-returnType _ (I.TyName "GLintptr" Nothing) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyName "GLsizeiptr" Nothing) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyName "GLint64" Nothing) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyName "GLuint64" Nothing) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyName x Nothing) _ e | x `elem` glTypes = e
-returnType _(I.TyName "Bool" Nothing) _ e = e
-returnType enums (I.TyName x Nothing) _ e | x `elem` enums =
+returnType _ (I.TyName "DOMTimeStamp" Nothing) _ _ e = e
+returnType _ (I.TyName "CompareHow" Nothing) _ _ e = e
+returnType _ (I.TyName "GLintptr" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyName "GLsizeiptr" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyName "GLint64" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyName "GLuint64" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyName x Nothing) _ _ e | x `elem` glTypes = e
+returnType _(I.TyName "Bool" Nothing) _ _ e = e
+returnType enums (I.TyName x Nothing) _ _ e | x `elem` enums =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>="))
           (mkVar "fromJSValUnchecked")
-returnType _ (I.TyName x Nothing) _ e =
+returnType enums t@(I.TyName x Nothing) _ wrapType e =
         H.HsInfixApp
-          (mkVar "nullableToMaybe")
+          (case tyRet enums False t [] wrapType of
+            Just (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _) -> mkVar "nullableToMaybe"
+            Just _ -> H.HsInfixApp (mkVar "fromJust") (H.HsQVarOp (mkSymbol ".")) (mkVar "nullableToMaybe")
+            _ -> error "Issue with wrapType?")
           (H.HsQVarOp (mkSymbol "<$>"))
           (H.HsParen e)
-returnType _ (I.TyInteger LongLong) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
---returnType (I.TyFloat _) _ e = H.HsApp (H.HsApp (mkVar "realToFrac") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyApply _ (I.TyInteger LongLong)) _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyOptional (I.TyInteger LongLong)) _ e =
+returnType _ (I.TyInteger LongLong) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+--returnType (I.TyFloat _) _ _ e = H.HsApp (H.HsApp (mkVar "realToFrac") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyApply _ (I.TyInteger LongLong)) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyOptional (I.TyInteger LongLong)) _ Unchecked e =
+    H.HsApp (H.HsApp (H.HsApp (H.HsApp (H.HsInfixApp (mkVar "round") (H.HsQVarOp (mkSymbol ".")) (mkVar "fromJust")) (mkVar ".")) (mkVar "nullableToMaybe")) (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyOptional (I.TyInteger LongLong)) _ _ e =
     H.HsApp (H.HsApp (H.HsApp (H.HsApp (H.HsApp (mkVar "fmap") (mkVar "round")) (mkVar ".")) (mkVar "nullableToMaybe")) (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TyOptional (I.TyApply _ (I.TyInteger LongLong))) _ e =
+returnType _ (I.TyOptional (I.TyApply _ (I.TyInteger LongLong))) _ Unchecked e =
+    H.HsApp (H.HsApp (H.HsApp (H.HsApp (H.HsInfixApp (mkVar "round") (H.HsQVarOp (mkSymbol ".")) (mkVar "fromJust")) (mkVar ".")) (mkVar "nullableToMaybe")) (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TyOptional (I.TyApply _ (I.TyInteger LongLong))) _ _ e =
     H.HsApp (H.HsApp (H.HsApp (H.HsApp (H.HsApp (mkVar "fmap") (mkVar "round")) (mkVar ".")) (mkVar "nullableToMaybe")) (mkVar "<$>")) (H.HsParen e)
---returnType (I.Ty (I.TyName "DOMString" Nothing)) _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
-returnType _ (I.TySafeArray _) _ e =
+--returnType (I.Ty (I.TyName "DOMString" Nothing)) _ _ e = H.HsApp (H.HsApp (mkVar "fromJSVal") (mkVar "<$>")) (H.HsParen e)
+returnType _ (I.TySafeArray _) _ _ e =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>="))
           (mkVar "fromJSValUnchecked")
-returnType _ (I.TySequence _ _) _ e =
+returnType _ (I.TySequence _ _) _ _ e =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>="))
           (mkVar "fromJSValUnchecked")
-returnType _ (I.TyOptional _) _ e =
+returnType _ (I.TyOptional _) _ _ e =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>="))
           (mkVar "fromJSValUnchecked")
-returnType _ (I.TyObject) _ e =
+returnType enums t@(I.TyObject) _ wrapType e =
         H.HsInfixApp
-          (mkVar "nullableToMaybe")
+          (case tyRet enums False t [] wrapType of
+            Just (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _) -> mkVar "nullableToMaybe"
+            Just _ -> H.HsInfixApp (mkVar "fromJust") (H.HsQVarOp (mkSymbol ".")) (mkVar "nullableToMaybe")
+            _ -> error "Issue with wrapType?")
           (H.HsQVarOp (mkSymbol "<$>"))
           (H.HsParen e)
-returnType _ _ _ e = e
+returnType _ _ _ _ e = e
 
 jsReturn :: I.Type -> JExpr -> JExpr
 jsReturn (I.TyName "Bool" Nothing) e = [jmacroE| `(e)`?1:0 |]
 jsReturn _ e = e
-
-propExcept [] e = e
-propExcept _ e = e
---propExcept _ e = H.HsApp (H.HsApp (mkVar "propagateGError") (mkVar "$"))
---                                   (H.HsLambda (H.SrcLoc "" 1 1) [H.HsPVar . H.HsIdent $ "errorPtr_"]
---                                           $ H.HsApp e (mkVar $ "errorPtr_"))
 
 gtkName s =
     let lower = map toLower (U.toUnderscoreCamel s) in
