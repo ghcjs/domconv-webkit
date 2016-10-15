@@ -110,8 +110,8 @@ makeWebkitBindings idl args = do
 
     ffiExports name allParents =
             "  , " ++ name ++ "(" ++ name ++ "), un" ++ name
-            ++ (if name `elem` allParents then ", Is" ++ name ++ ", to" ++ name else "") ++ ", "
-            ++ "castTo" ++ name ++ ", " ++ "gType" ++ name
+            ++ (if name `elem` allParents then ", Is" ++ name ++ ", to" ++ name else "")
+            ++ "gType" ++ name
 
     ffiTypes hh prntmap allParents =
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
@@ -154,19 +154,14 @@ makeWebkitBindings idl args = do
             ++ (if name `elem` allParents
                     then "class " ++ head (map ("Is"++) (rights parents) ++ ["IsGObject"]) ++ " o => Is" ++ name ++ " o\n"
                             ++ "to" ++ name ++ " :: Is" ++ name ++ " o => o -> " ++ name ++ "\n"
-                            ++ "to" ++ name ++ " = unsafeCastGObject . toGObject\n\n"
+                            ++ "to" ++ name ++ " = " ++ name ++ " . coerce\n\n"
                             ++ "instance Is" ++ name ++ " " ++ name ++ "\n"
                     else "")
 
             ++ concatMap (\parent -> "instance Is" ++ parent ++ " " ++ name ++ "\n") (rights parents)
             ++ "instance IsGObject " ++ name ++ " where\n"
-            ++ "  toGObject = GObject . un" ++ name ++ "\n"
-            ++ "  {-# INLINE toGObject #-}\n"
-            ++ "  unsafeCastGObject = " ++ name ++ " . unGObject\n"
-            ++ "  {-# INLINE unsafeCastGObject #-}\n\n"
-
-            ++ "castTo" ++ name ++ " :: IsGObject obj => obj -> JSM " ++ name ++ "\n"
-            ++ "castTo" ++ name ++ " = castTo gType" ++ name ++ " \"" ++ name ++ "\"\n\n"
+            ++ "  typeGType _ = gType" ++ name ++ "\n"
+            ++ "  {-# INLINE typeGType #-}\n\n"
 
             ++ "gType" ++ name ++ " :: JSM GType\n"
             ++ "gType" ++ name ++ " = GType . Object <$> jsg \"" ++ jsname name ++ "\"\n"
@@ -393,7 +388,7 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                 case name of
                     "Enums" -> []
                     _ | "Callback" `isSuffixOf` name || name == "MediaQueryListListener" -> map (H.HsEVar . H.UnQual . H.HsIdent) (name : parentExp)
-                    _ -> map (H.HsEVar . H.UnQual . H.HsIdent) ([name, "castTo" ++ name, "gType" ++ name] ++ parentExp)
+                    _ -> map (H.HsEVar . H.UnQual . H.HsIdent) ([name++"(..)", "gType" ++ name] ++ parentExp)
       parentExp | name `elem` allParents = ["Is" ++ name, "to" ++ name]
                 | otherwise = []
       eventImp "JSDOM.Event" = []
