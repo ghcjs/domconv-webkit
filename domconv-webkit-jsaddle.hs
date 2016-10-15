@@ -111,7 +111,7 @@ makeWebkitBindings idl args = do
     ffiExports name allParents =
             "  , " ++ name ++ "(" ++ name ++ "), un" ++ name
             ++ (if name `elem` allParents then ", Is" ++ name ++ ", to" ++ name else "")
-            ++ "gType" ++ name
+            ++ ", " ++ "gType" ++ name
 
     ffiTypes hh prntmap allParents =
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
