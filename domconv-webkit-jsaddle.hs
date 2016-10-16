@@ -246,7 +246,10 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
   let jsffiModule = "JSDOM." ++ (if customFileExists then "Custom." else "Generated.") ++ name
 
   Prelude.writeFile ("src/JSDOM/Generated" </> name ++ ".hs") $
-        "{-# LANGUAGE PatternSynonyms #-}\n"
+        "{-# LANGUAGE CPP #-}\n"
+     ++ "{-# LANGUAGE PatternSynonyms #-}\n"
+     ++ "-- For HasCallStack compatibility\n"
+     ++ "{-# LANGUAGE ImplicitParams, ConstraintKinds, KindSignatures #-}\n"
      ++ "{-# OPTIONS_GHC -fno-warn-unused-imports #-}\n"
      ++ prettyJS (H.HsModule loc (H.Module $ "JSDOM.Generated." ++ name) exp imp decl) comment
      ++ "\n"
@@ -258,6 +261,16 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
 
 prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
+     : "#if MIN_VERSION_base(4,9,0)"
+     : "import GHC.Stack (HasCallStack)"
+     : "#elif MIN_VERSION_base(4,8,0)"
+     : "import GHC.Stack (CallStack)"
+     : "import GHC.Exts (Constraint)"
+     : "type HasCallStack = ((?callStack :: CallStack) :: Constraint)"
+     : "#else"
+     : "import GHC.Exts (Constraint)"
+     : "type HasCallStack = (() :: Constraint)"
+     : "#endif"
      : map prettyDecl decls >>= lines >>= gaurdFromJSValUnchecked
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = prettyPrint d
@@ -358,6 +371,7 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                -- (mkModImport modid : (imps ++ docimp))
                (map (mkModImport . H.Module) ([
                       "Prelude ((.), (==), (>>=), return, IO, Int, Float, Double, Bool(..), Maybe, maybe, fromIntegral, round, realToFrac, fmap, Show, Read, Eq, Ord, Maybe(..))"
+                    , "qualified Prelude (error)"
                     , "Data.Typeable (Typeable)"
                     , "Language.Javascript.JSaddle (JSM(..), JSVal(..), JSString, strictEqual, toJSVal, valToStr, valToNumber, valToBool, js, jss, jsf, jsg, function, new, array)"
                     , "Data.Int (Int64)"
@@ -853,7 +867,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter iid iat tat ext r =
-        concatMap (\wrapType -> gtsig wrapType (rawReturn wrapType) ++ gimpl wrapType (rawReturn wrapType)) [Normal, Unchecked]
+        concatMap (\wrapType -> gtsig wrapType (rawReturn wrapType) ++ gimpl wrapType (rawReturn wrapType)) [Normal, Unsafe, Unchecked]
       where
         rawReturn = tyRet enums tat ext
         gimpl _ Nothing = []
@@ -954,11 +968,12 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
 -- goes last to make monadic composition of actions easier.
 
 data CallbackType = SyncContinueAsync | SyncThrowWouldBlock | Async deriving (Show, Eq)
-data WrapType = Normal | Underscore | Unchecked deriving (Show, Eq)
+data WrapType = Normal | Underscore | Unsafe | Unchecked deriving (Show, Eq)
 
 wrapName _ [] = error "Empty name passed to wrapName"
 wrapName Normal x = x
 wrapName Underscore x = x ++ "_"
+wrapName Unsafe x = x ++ "Unsafe"
 wrapName Unchecked x = x ++ "Unchecked"
 
 callbackPostfix SyncContinueAsync   = ""
@@ -1096,7 +1111,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at _) =
     mkmeth (I.Operation (I.FunId (I.Id "handleEvent") _ _) _ _ _ exAttr) | getDef intf `notElem` ["EventListener"] = error $ "Unexpected handleEvent function in " ++ show intf
     mkmeth op | skip op = []
     mkmeth op@(I.Operation (I.FunId _ _ parm) optype raises _ ext) =
-        concatMap (\wrapType -> tsig wrapType (rawReturn wrapType) ++ timpl wrapType (rawReturn wrapType)) [Normal, Underscore, Unchecked]
+        concatMap (\wrapType -> tsig wrapType (rawReturn wrapType) ++ timpl wrapType (rawReturn wrapType)) [Normal, Underscore, Unsafe, Unchecked]
       where
         rawReturn = tyRet enums optype ext
         tsig _ Nothing = []
@@ -1232,6 +1247,10 @@ tyRet enums t ext Normal = Just (tyRet' "result" enums t ext)
 tyRet enums t ext Underscore = case tyRet' "result" enums t ext of
     H.HsTyTuple [] -> Nothing
     _ -> Just (H.HsTyTuple [])
+tyRet enums t ext Unsafe = case tyRet' "result" enums t ext of
+    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) (H.HsTyApp (H.HsTyCon (H.Special H.HsListCon)) x)) -> Nothing
+    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) x) -> Just x
+    _ -> Nothing
 tyRet enums t ext Unchecked = case tyRet' "result" enums t ext of
     (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) (H.HsTyApp (H.HsTyCon (H.Special H.HsListCon)) x)) -> Nothing
     (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) x) -> Just x
@@ -1300,6 +1319,7 @@ ffiTySelf intf = mkTIdent (typeFor $ getDef intf)
 
 ctxRet :: WrapType -> I.Type -> [H.HsAsst]
 ctxRet Underscore _ = []
+ctxRet Unsafe t = (mkUIdent "HasCallStack", []) : ctxRet Normal t
 ctxRet _ t = ctxRet' "result" t
 
 ctxRet' :: String -> I.Type -> [H.HsAsst]
@@ -1527,6 +1547,15 @@ returnType _ _ _ Underscore e =
         H.HsApp
           (mkVar "void")
           (H.HsParen e)
+returnType enums t ext Unsafe e =
+        H.HsInfixApp
+          (H.HsParen (returnType enums t ext Normal e))
+          (H.HsQVarOp (mkSymbol ">>="))
+          (H.HsApp
+            (H.HsApp
+              (mkVar "maybe")
+              (H.HsParen (H.HsApp (mkVar "Prelude.error") (H.HsLit $ H.HsString "Nothing to return"))))
+              (mkVar "return"))
 returnType _ (I.TyName "DOMString" Nothing) ext wrapType e
     | wrapType /= Unchecked &&
       ( I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
