@@ -276,10 +276,6 @@ prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
      : "#if MIN_VERSION_base(4,9,0)"
      : "import GHC.Stack (HasCallStack)"
-     : "#elif MIN_VERSION_base(4,8,0)"
-     : "import GHC.Stack (CallStack)"
-     : "import GHC.Exts (Constraint)"
-     : "type HasCallStack = ((?callStack :: CallStack) :: Constraint)"
      : "#else"
      : "import GHC.Exts (Constraint)"
      : "type HasCallStack = (() :: Constraint)"
