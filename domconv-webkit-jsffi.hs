@@ -248,8 +248,7 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
   customFileExists <- doesFileExist $ "ghcjs-dom-jsffi/src/GHCJS/DOM/JSFFI" </> name ++ ".hs"
   let jsffiModule = "GHCJS.DOM.JSFFI." ++ (if customFileExists then "" else "Generated.") ++ name
   Prelude.writeFile ("ghcjs-dom-jsffi/src/GHCJS/DOM/JSFFI/Generated" </> name ++ ".hs") $
-        "{-# LANGUAGE CPP #-}\n"
-     ++ "{-# LANGUAGE PatternSynonyms #-}\n"
+        "{-# LANGUAGE PatternSynonyms #-}\n"
      ++ "{-# LANGUAGE ForeignFunctionInterface #-}\n"
      ++ "{-# LANGUAGE JavaScriptFFI #-}\n"
      ++ "-- For HasCallStack compatibility\n"
@@ -274,12 +273,6 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
 
 prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
-     : "#if MIN_VERSION_base(4,9,0)"
-     : "import GHC.Stack (HasCallStack)"
-     : "#else"
-     : "import GHC.Exts (Constraint)"
-     : "type HasCallStack = (() :: Constraint)"
-     : "#endif"
      : map prettyDecl decls >>= lines >>= gaurdFromJSValUnchecked
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = prettyPrint d

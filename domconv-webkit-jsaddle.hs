@@ -246,8 +246,7 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
   let jsffiModule = "JSDOM." ++ (if customFileExists then "Custom." else "Generated.") ++ name
 
   Prelude.writeFile ("src/JSDOM/Generated" </> name ++ ".hs") $
-        "{-# LANGUAGE CPP #-}\n"
-     ++ "{-# LANGUAGE PatternSynonyms #-}\n"
+        "{-# LANGUAGE PatternSynonyms #-}\n"
      ++ "-- For HasCallStack compatibility\n"
      ++ "{-# LANGUAGE ImplicitParams, ConstraintKinds, KindSignatures #-}\n"
      ++ "{-# OPTIONS_GHC -fno-warn-unused-imports #-}\n"
@@ -261,12 +260,6 @@ putSplit (H.HsModule loc modid exp imp decl, comment) = do
 
 prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
-     : "#if MIN_VERSION_base(4,9,0)"
-     : "import GHC.Stack (HasCallStack)"
-     : "#else"
-     : "import GHC.Exts (Constraint)"
-     : "type HasCallStack = (() :: Constraint)"
-     : "#endif"
      : map prettyDecl decls >>= lines >>= gaurdFromJSValUnchecked
   where
     prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = prettyPrint d
@@ -1409,6 +1402,12 @@ applyParam param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) =
         I.TySafeArray _ -> H.HsApp (mkVar "toJSVal") (H.HsParen (H.HsApp (mkVar "array") pname))
         I.TyOptional (I.TySequence _ _) -> H.HsApp (mkVar "toJSVal") (H.HsParen (H.HsApp (mkVar "fmap") (H.HsApp (mkVar "array") pname)))
         I.TyOptional (I.TySafeArray _) -> H.HsApp (mkVar "toJSVal") (H.HsParen (H.HsApp (mkVar "fmap") (H.HsApp (mkVar "array") pname)))
+        I.TyName "GLintptr" Nothing -> H.HsApp (mkVar "integralToDoubleToJSVal") pname
+        I.TyName "GLsizeiptr" Nothing -> H.HsApp (mkVar "integralToDoubleToJSVal") pname
+        I.TyName "GLint64" Nothing -> H.HsApp (mkVar "integralToDoubleToJSVal") pname
+        I.TyName "GLuint64" Nothing -> H.HsApp (mkVar "integralToDoubleToJSVal") pname
+        I.TyInteger LongLong -> H.HsApp (mkVar "integralToDoubleToJSVal") pname
+        I.TyApply _ (I.TyInteger LongLong) -> H.HsApp (mkVar "integralToDoubleToJSVal") pname
         _ -> H.HsApp (mkVar "toJSVal") pname
 
 --applyParam :: [String] -> (String -> Bool) -> I.Param -> H.HsExp -> H.HsExp
@@ -1573,7 +1572,9 @@ returnType _ (I.TyName x Nothing) _ _ e | x `elem` glTypes || x == "CompareHow" 
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>="))
-          (mkVar "fromJSValUnchecked")
+          (mkVar $ if x == "GLsizeiptr"
+                then "integralFromDoubleFromJSValUnchecked"
+                else "fromJSValUnchecked")
 returnType _(I.TyName "Bool" Nothing) _ _ e =
     H.HsInfixApp
           (H.HsParen e)
@@ -1651,6 +1652,10 @@ returnType enums t@(I.TyOptional _) _ wrapType e =
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>=")) $
           case tyRet enums t [] wrapType of
+            Just (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) (H.HsTyVar (H.HsIdent t)))
+                | t `elem` ["Word64", "GLsizeiptr"] -> mkVar "integralFromDoubleFromJSVal"
+            Just (H.HsTyVar (H.HsIdent t))
+                | t `elem` ["Word64", "GLsizeiptr"] -> mkVar "integralFromDoubleFromJSValUnchecked"
             Just (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _) -> mkVar "fromJSVal"
             Just _ -> mkVar "fromJSValUnchecked"
             _ -> error "Issue with wrapType?"
