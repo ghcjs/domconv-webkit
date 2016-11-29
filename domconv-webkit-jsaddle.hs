@@ -146,7 +146,9 @@ makeWebkitBindings idl args = do
 
             ++ "instance FromJSVal " ++ name ++ " where\n"
             ++ "  fromJSVal v = fmap " ++ name ++ " <$> maybeNullOrUndefined v\n"
-            ++ "  {-# INLINE fromJSVal #-}\n\n"
+            ++ "  {-# INLINE fromJSVal #-}\n"
+            ++ "  fromJSValUnchecked = return . " ++ name ++ "\n"
+            ++ "  {-# INLINE fromJSValUnchecked #-}\n\n"
 
             ++ "instance MakeObject " ++ name ++ " where\n"
             ++ "  makeObject = makeObject . un" ++ name ++ "\n\n"
