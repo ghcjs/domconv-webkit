@@ -28,7 +28,7 @@ passed between lexer and parser. Highlights:
   * As is the case when parsing C with Yacc, we choose
     to get around the problem of parsing typedefs by
     installing parsed typedef names into the symbol
-    table being threaded by the lexer monad.  
+    table being threaded by the lexer monad.
 
     Hence, subsequent uses of the typedef'ed name will
     be reported as T_tdef_name lexemes rather than as
@@ -42,6 +42,11 @@ data IDLToken
  = T_semi
  | T_module
  | T_interface
+ | T_dictionary
+ | T_callback
+ | T_serializer
+ | T_stringifier
+ | T_iterable
  | T_implements
  | T_oparen
  | T_cparen
@@ -57,6 +62,7 @@ data IDLToken
  | T_negate
  | T_rel_or
  | T_or
+ | T_or_keyword
  | T_xor
  | T_rel_and
  | T_and
@@ -98,11 +104,13 @@ data IDLToken
  | T_void
  | T_mode ParamDir
  | T_optional
+ | T_required
  | T_unrestricted
  | T_raises
  | T_context
  | T_getter
  | T_setter
+ | T_deleter
  | T_fixed
  | T_idl_type   Type
  | T_type       String
@@ -120,6 +128,9 @@ data IDLToken
  | T_minus
  | T_safearray
  | T_sequence
+ | T_record
+ | T_promise
+ | T_frozenarray
  | T_wstring
  | T_readonly
  | T_attribute
@@ -138,6 +149,7 @@ data IDLToken
  | T_unknown (SrcLoc,String)
  | T_ignore_start
  | T_eof
+ | T_inherit
 --   deriving Show
 \end{code}
 
@@ -145,7 +157,7 @@ Keywords for the different flavours of IDL we support:
 
 \begin{code}
 idlKeywords :: [(String, IDLToken)]
-idlKeywords 
+idlKeywords
   | optCompilingDceIDL = dce_keywords
   | optCompilingMsIDL  = midl_keywords
   | optCompilingOmgIDL = omg_keywords
@@ -159,15 +171,20 @@ std_idl_keywords =
      else
         id)
     [ ("boolean",       T_type "bool")
+    , ("callback",      T_callback)
     , ("case",          T_case)
     , ("char",          T_char)
     , ("const",         T_const)
     , ("default",       T_default)
+    , ("dictionary",    T_dictionary)
     , ("double",        T_float Long)
     , ("enum",          T_enum)
     , ("float",         T_float Short)
     , ("in",            T_mode In)
+    , ("iterable",      T_iterable)
     , ("optional",      T_optional)
+    , ("required",      T_required)
+    , ("or",            T_or_keyword)
     , ("unrestricted",  T_unrestricted)
     , ("interface",     T_interface)
     , ("implements",    T_implements)
@@ -176,6 +193,8 @@ std_idl_keywords =
     , ("int",           T_int Natural)
     , ("module",        T_module)
     , ("out",           T_mode Out)
+    , ("serializer",    T_serializer)
+    , ("stringifier",   T_stringifier)
     , ("short",         T_int Short)
     , ("signed",        T_signed)
     , ("sizeof",        T_sizeof)
@@ -195,8 +214,8 @@ std_idl_keywords =
     , ("stablePtr",     T_idl_type TyStable)
     , ("extern",        T_extern)
           -- FIXME: normalise callconv naming with cpp
-    , ("__stdcall",     T_callconv Stdcall)  
-    , ("__stdcall__",   T_callconv Stdcall)  
+    , ("__stdcall",     T_callconv Stdcall)
+    , ("__stdcall__",   T_callconv Stdcall)
     , ("__cdecl",       T_callconv Cdecl)
     , ("__cdecl__",     T_callconv Cdecl)
     , ("_stdcall",      T_callconv Stdcall)
@@ -204,7 +223,7 @@ std_idl_keywords =
     , ("stdcall",       T_callconv Stdcall)
     , ("cdecl",         T_callconv Cdecl)
     , ("__attribute__", T_gnu_attribute)
-    ] 
+    ]
 
 dce_keywords :: [(String, IDLToken)]
 dce_keywords = std_idl_keywords ++ dce_idl_keywords
@@ -213,14 +232,14 @@ dce_idl_keywords :: [(String, IDLToken)]
 dce_idl_keywords =
  [ ("error_status_t",   T_type "error_status_t")
  , ("small",            T_int Short)
- ] 
+ ]
 
 
 midl_keywords :: [(String, IDLToken)]
 midl_keywords = std_idl_keywords ++ dce_idl_keywords ++ ms_idl_keywords
 
 ms_idl_keywords :: [(String, IDLToken)]
-ms_idl_keywords = 
+ms_idl_keywords =
       [ ("IDispatch",      T_type "IDispatch")
       , ("IUnknown",       T_type "IUnknown")
       , ("HRESULT",        T_type "HRESULT")
@@ -237,7 +256,7 @@ ms_idl_keywords =
       , ("__int64",        T_int LongLong)
 --      , ("int64",        T_int LongLong)
 --      , ("uint64",       T_uint LongLong)  -- this one, ugh!
-                                            
+
       , ("coclass",        T_coclass)
       , ("cpp_quote",      T_cpp_quote)
       , ("dispinterface",  T_dispinterface)
@@ -253,13 +272,13 @@ ms_idl_keywords =
       , ("hs_quote",       T_hs_quote)
       , ("stub_include",   T_include "")
       , ("__ignore_start__", T_ignore_start)
-      ]      
+      ]
 
 omg_keywords :: [(String, IDLToken)]
 omg_keywords = std_idl_keywords ++ omg_idl_keywords
 
 omg_idl_keywords :: [(String, IDLToken)]
-omg_idl_keywords = 
+omg_idl_keywords =
   [ ("any",        T_any)
   , ("attribute",  T_attribute)
   , ("context",    T_context)
@@ -271,9 +290,14 @@ omg_idl_keywords =
   , ("raises",     T_raises)
   , ("getter",     T_getter)
   , ("setter",     T_setter)
+  , ("deleter",    T_deleter)
   , ("readonly",   T_readonly)
   , ("sequence",   T_sequence)
+  , ("record",     T_record)
+  , ("Promise",    T_promise)
+  , ("FrozenArray", T_frozenarray)
   , ("static",     T_static)
+  , ("inherit",    T_inherit)
   ]
 
 \end{code}

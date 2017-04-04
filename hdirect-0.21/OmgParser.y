@@ -33,6 +33,11 @@ END_GHC_ONLY
         ';'           { T_semi }
         MODULE        { T_module }
         INTERFACE     { T_interface }
+        DICTIONARY    { T_dictionary }
+        CALLBACK      { T_callback }
+        SERIALIZER    { T_serializer }
+        STRINGIFIER   { T_stringifier }
+        ITERABLE      { T_iterable }
         IMPLEMENTS    { T_implements }
         '('           { T_oparen }
         ')'           { T_cparen }
@@ -40,6 +45,7 @@ END_GHC_ONLY
         '}'           { T_ccurly }
         ':'           { T_colon  }
         '::'          { T_dcolon  }
+        '...'         { T_dotdotdot }
         ','           { T_comma }
         '.'           { T_dot }
         CONST         { T_const }
@@ -47,6 +53,7 @@ END_GHC_ONLY
         '=='          { T_eqeq }
         '!='          { T_neq }
         '|'           { T_or }
+        OR            { T_or_keyword }
         '||'          { T_rel_or }
         '^'           { T_xor }
         '&'           { T_and }
@@ -81,7 +88,10 @@ END_GHC_ONLY
         VOID          { T_void }
         MODE          { T_mode $$ }
         OPTIONAL      { T_optional }
+        REQUIRED      { T_required }
         UNRESTRICTED  { T_unrestricted }
+        INHERIT       { T_inherit }
+        IMPORT        { T_import }
         LITERAL       { T_literal $$ }
         STRING_LIT    { T_string_lit $$ }
         ID            { T_id $$ }
@@ -90,7 +100,10 @@ END_GHC_ONLY
         '*'           { T_times }
         '-'           { T_minus }
         WSTRING       { T_wstring }
-        SEQUENCE      { T_sequence  }
+        SEQUENCE      { T_sequence }
+        RECORD        { T_record }
+        PROMISE       { T_promise }
+        FROZENARRAY   { T_frozenarray }
         OBJECT        { T_object }
         ANY           { T_any }
         BYTE          { T_int $$ }
@@ -103,6 +116,7 @@ END_GHC_ONLY
         CONTEXT       { T_context }
         GETTER        { T_getter }
         SETTER        { T_setter }
+        DELETER       { T_deleter }
         READONLY      { T_readonly }
         INCLUDE_START { T_include_start $$ }
         INCLUDE_END   { T_include_end }
@@ -122,6 +136,7 @@ definition   :: { Defn }
    | const_decl opt_semiColon { $1 }
    | except_decl opt_semiColon { $1 }
    | interface opt_semiColon { $1 }
+   | dictionary opt_semiColon { $1 }
    | implements opt_semiColon { $1 }
    | module opt_semiColon   { $1 }
    | PRAGMA                 { Pragma $1 }
@@ -131,7 +146,7 @@ definition   :: { Defn }
 opt_semiColon :: { Bool }
    : ';' { True }
    | {-empty-} { False }
-    
+
 module :: { Defn }
    : MODULE identifier '{' definitions '}'  { Module $2 (reverse $4) }
 
@@ -141,11 +156,27 @@ interface :: { Defn }
 
 interface_decl :: { Defn }
    : interface_header '{' exports '}'  { let (at, ty,ids,inherit) = $1 in Interface ids inherit (reverse $3) at ty }
+   | opt_extended_attributes CALLBACK identifier '=' op_type_spec parameter_decls raises_exprs mb_context_expr { Interface $3 [] [Operation (FunId (Id "callback") Nothing $6) $5 $7 $8 []] $1 (Just (Id "callback")) }
+   | CALLBACK identifier '=' op_type_spec parameter_decls raises_exprs mb_context_expr { Interface $2 [] [Operation (FunId (Id "callback") Nothing $5) $4 $6 $7 []] [] (Just (Id "callback")) }
 
 interface_header :: { ([ExtAttribute], Maybe Id, Id, Inherit) }
    : opt_extended_attributes INTERFACE identifier opt_inheritance_spec { ($1,Nothing,$3,$4) }
+   | opt_extended_attributes CALLBACK INTERFACE identifier opt_inheritance_spec { ($1,Just (Id "callback"),$4,$5) }
    | opt_extended_attributes identifier INTERFACE identifier opt_inheritance_spec { ($1,Just $2,$4,$5) }
    | identifier INTERFACE identifier opt_inheritance_spec { ([],Just $1,$3,$4) }
+
+dictionary :: { Defn }
+   : dictionary_decl         { $1 }
+   | opt_extended_attributes DICTIONARY identifier   { Forward $3 }
+
+dictionary_decl :: { Defn }
+   : dictionary_header '{' dictionary_exports '}'  { let (at, ty,ids,inherit) = $1 in Interface ids inherit (reverse $3) at ty }
+
+dictionary_header :: { ([ExtAttribute], Maybe Id, Id, Inherit) }
+   : opt_extended_attributes DICTIONARY identifier opt_inheritance_spec { ($1,Nothing,$3,$4) }
+   | opt_extended_attributes identifier DICTIONARY identifier opt_inheritance_spec { ($1,Just $2,$4,$5) }
+   | identifier DICTIONARY identifier opt_inheritance_spec { ([],Just $1,$3,$4) }
+
 
 implements :: { Defn }
    : identifier IMPLEMENTS identifier   { Implements $1 $3 }
@@ -160,6 +191,16 @@ export  :: { Defn }
    | except_decl ';'          { $1 }
    | attr_decl ';'            { $1 }
    | op_decl ';'              { $1 }
+   | serializer_decl ';'      { $1 }
+   | stringifier_decl ';'     { $1 }
+   | iterable_decl ';'        { $1 }
+
+dictionary_exports :: { [Defn] }
+   : {-empty-}                  {    []   }
+   | dictionary_exports dictionary_export             { $2 : $1 }
+
+dictionary_export  :: { Defn }
+   : dictionary_attr_decl ';'            { $1 }
 
 opt_inheritance_spec :: { Inherit }
    : {-empty-}                { [] }
@@ -207,7 +248,7 @@ xor_expr :: { Expr }
 and_expr :: { Expr }
    : shift_expr                 { $1 }
    | and_expr '&' shift_expr    { Binary And $1 $3 }
-   
+
 shift_expr :: { Expr }
    : add_expr                   { $1 }
    | shift_expr SHIFT add_expr  { Binary (Shift $2) $1 $3 }
@@ -257,7 +298,7 @@ type_spec :: { Type }
    : simple_type_spec                   { $1 }
    | constr_type_spec                   { $1 }
    | type_spec '[' ']'                  { TySafeArray $1 }
-   
+   | '(' sum_type ')'                   { TySum $2 }
 
 simple_type_spec :: { Type }
    : base_type_spec                     { $1 }
@@ -275,6 +316,9 @@ base_type_spec :: { Type }
 
 template_type_spec :: { Type }
    : sequence_type                      { $1 }
+   | record_type                        { $1 }
+   | promise_type                       { $1 }
+   | frozenarray_type                   { $1 }
    | wide_string_type                   { $1 }
    | fixed_pt_type                      { $1 }
 
@@ -290,6 +334,14 @@ declarators :: { [Id] }
 simple_declarator ::  { Id }
    : identifier                         { $1 }
 
+exposure_decls :: { [Id] }
+   : '(' expose_decls ')'                { (reverse $2) }
+   | '(' ')'                            { [] }
+
+expose_decls :: { [Id] }
+   : identifier                         { [$1] }
+   | expose_decls ',' identifier         { $3:$1 }
+
 extended_attribute ::  { ExtAttribute }
    : identifier                         { ExtAttr $1 [] }
    | identifier '=' identifier          { ExtAttr $1 [] }
@@ -297,7 +349,10 @@ extended_attribute ::  { ExtAttribute }
    | identifier '=' const_type          { ExtAttr $1 [] }
    | identifier '=' const_expr          { ExtAttr $1 [] }
    | identifier '=' literal             { ExtAttr $1 [] }
+   | identifier '=' STRING_LIT          { ExtAttr $1 [] }
+   | identifier '=' '(' string_lit_list ')' { ExtAttr $1 [] }
    | identifier '=' identifier parameter_decls { ExtAttr $1 $4 }
+   | identifier '=' exposure_decls { ExtAttr $1 [] }
    | identifier parameter_decls { ExtAttr $1 $2 }
 
 extended_attributes :: { [ExtAttribute] }
@@ -346,12 +401,12 @@ struct_type :: { Type }
 member_list :: { [Member] }
    : member             { [$1] }
    | member_list member { $2:$1 }
-   
+
 member ::      { Member }
    : type_spec declarators ';'  { ($1,[],$2) }
 
 union_type  ::  { Type }
-   : UNION identifier SWITCH '(' switch_type_spec ')' '{' switch_body '}' 
+   : UNION identifier SWITCH '(' switch_type_spec ')' '{' switch_body '}'
                         { TyUnion (Just $2) $5 (Id "tagged_union") Nothing (reverse $8) }
 
 switch_type_spec :: { Type }
@@ -391,8 +446,17 @@ enumItem :: { (Either Id String,[Attribute],Maybe Expr) }
    | STRING_LIT { (Right $1,[],Nothing) }
 
 sequence_type :: { Type }
-   : SEQUENCE '<' simple_type_spec ',' positive_int_const '>' { TySequence $3 (Just $5) }
-   | SEQUENCE '<' simple_type_spec '>' { TySequence $3 Nothing }
+   : SEQUENCE '<' type_spec '>' { TySequence $3 Nothing }
+
+record_type :: { Type }
+   : RECORD '<' simple_type_spec ',' simple_type_spec '>' { TyRecord $3 $5 }
+
+promise_type :: { Type }
+   : PROMISE '<' op_type_spec '>' { TyPromise $3 }
+   | PROMISE { TyPromise TyAny }
+
+frozenarray_type :: { Type }
+   : FROZENARRAY '<' simple_type_spec '>' { TyFrozenArray $3 }
 
 wide_string_type   :: { Type }
    : WSTRING '<' positive_int_const '>' { TyWString (Just $3) }
@@ -409,10 +473,22 @@ fixed_array_size  :: { Expr }
    : '[' positive_int_const ']'         { $2 }
 
 attr_decl   :: { Defn }
-   : opt_extended_attributes opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $5) $2 $4 $6 $1 }
+   : opt_extended_attributes opt_stringifier opt_op_attribute opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $7) $4 $6 $8 $1 }
+   | opt_extended_attributes opt_op_attribute opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $6) $3 $5 $7 $1 }
+   | opt_extended_attributes INHERIT opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $6) $3 $5 $7 $1 }
+
+dictionary_attr_decl   :: { Defn }
+   : opt_extended_attributes opt_required param_type_spec simple_declarators raises_exprs { DictionaryAttribute (reverse $4) $2 $3 $5 $1 }
+   | opt_extended_attributes opt_required param_type_spec simple_declarators raises_exprs '=' param_default { DictionaryAttribute (reverse $4) $2 $3 $5 $1 }
 
 opt_readonly :: { Bool }
    : READONLY   { True } | {-empty-} { False }
+
+opt_required :: { Bool }
+   : REQUIRED   { True } | {-empty-} { False }
+
+opt_stringifier :: { Bool }
+   : STRINGIFIER   { True } | {-empty-} { False }
 
 opt_extended_attributes :: { [ExtAttribute] }
    : '[' extended_attributes ']' { $2 }
@@ -423,21 +499,75 @@ simple_declarators :: { [Id] }
    | simple_declarators ',' simple_declarator { $3:$1 }
 
 except_decl :: { Defn }
-   : opt_extended_attributes EXCEPTION identifier '{' exports '}' { Exception $3 $5 }
+   : opt_extended_attributes EXCEPTION identifier '{' exports '}' { Interface $3 [] (reverse $5) $1 Nothing }
+
+serializer_decl :: { Defn }
+   : SERIALIZER '=' '{' serializer_declarators '}' { Serializer }
+
+serializer_declarators :: { [Id] }
+   : serializer_declarator          { [$1] }
+   | serializer_declarators ',' serializer_declarator { $3:$1 }
+
+serializer_declarator ::  { Id }
+   : identifier                         { $1 }
+   | INHERIT                            { Id "inherit" }
+   | ATTRIBUTE                          { Id "attribute" }
+
+stringifier_decl :: { Defn }
+   : opt_extended_attributes STRINGIFIER { Stringifier }
+--   | opt_extended_attributes STRINGIFIER identifier '(' ')' { Stringifier }
+
+iterable_decl :: { Defn }
+   : opt_extended_attributes ITERABLE '<' iterable_declarators '>' { Iterable }
+
+iterable_declarators :: { [Id] }
+   : iterable_declarator          { [$1] }
+   | iterable_declarators ',' iterable_declarator { $3:$1 }
+
+iterable_declarator ::  { Id }
+   : identifier                         { $1 }
+   | ATTRIBUTE                          { Id "attribute" }
 
 op_decl :: { Defn }
    : opt_extended_attributes opt_op_attribute op_type_spec identifier parameter_decls raises_exprs mb_context_expr
                 { Operation (FunId $4 Nothing $5) $3 $6 $7 $1 }
-   | opt_extended_attributes GETTER op_type_spec identifier parameter_decls raises_exprs mb_context_expr
-                { Operation (FunId $4 Nothing $5) $3 $6 $7 $1 }
-   | opt_extended_attributes GETTER op_type_spec parameter_decls raises_exprs mb_context_expr
-                { Operation (FunId Getter Nothing $4) $3 $5 $6 $1 }
+   | opt_extended_attributes GETTER getter_type_spec getter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) $3 re ctx (ExtAttr (Id "Getter") []:$1) }
+   | opt_extended_attributes SETTER op_type_spec setter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) $3 re ctx $1 }
+   | opt_extended_attributes DELETER op_type_spec deleter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) $3 re ctx $1 }
+
+-- getter_id :: { Id }
+--    : identifier  { $1 }
+--    : {-empty-} { Getter }
+
+getter_decl :: { (Id, [Param], [Raises], Maybe Context)  }
+  : parameter_decls raises_exprs mb_context_expr
+                { (Getter, $1, $2, $3) }
+  | identifier parameter_decls raises_exprs mb_context_expr
+                { ($1, $2, $3, $4) }
+
+setter_decl :: { (Id, [Param], [Raises], Maybe Context)  }
+  : parameter_decls raises_exprs mb_context_expr
+                { (Setter, $1, $2, $3) }
+  | identifier parameter_decls raises_exprs mb_context_expr
+                { ($1, $2, $3, $4) }
+
+deleter_decl :: { (Id, [Param], [Raises], Maybe Context)  }
+  : parameter_decls raises_exprs mb_context_expr
+                { (Deleter, $1, $2, $3) }
+  | identifier parameter_decls raises_exprs mb_context_expr
+                { ($1, $2, $3, $4) }
 
 opt_op_attribute :: { Bool }
    : {-nothing-}                        { False }
    | ONEWAY                             { True  }
    | STATIC                             { False  }
-   | GETTER                             { False  } -- TODO
+--    | GETTER                             { False  } -- TODO
+
+getter_type_spec :: { Type }
+   : base_type_spec                     { $1 }
+   | scoped_name                        { TyName $1 Nothing }
+   | getter_type_spec '?'               { TyOptional $1 }
+   | '(' sum_type ')'                   { TySum $2 }
 
 op_type_spec :: { Type }
    : param_type_spec                    { $1 }
@@ -451,8 +581,16 @@ param_decls :: { [Param] }
    : param_decl                         { [$1] }
    | param_decls ',' param_decl         { $3:$1 }
 
+param_default :: { () }
+   : literal     { () }
+   | STRING_LIT  { () }
+   | '(' string_lit_list ')' { () }
+   | const_expr  { () }
+   | '[' ']'     { () }
+
 param_decl :: { Param }
-   : param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator { Param Optional $5 $4 [$1] $2 }
+   : param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator '=' param_default { Param Optional $5 $4 [$1] $2 }
+   | param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator { Param Optional $5 $4 [$1] $2 }
    | param_attribute opt_extended_attributes param_type_spec simple_declarator { Param Required $4 $3 [$1] $2 }
 
 param_attribute :: { Attribute }
@@ -484,9 +622,15 @@ string_lit_list  :: { [String] }
 param_type_spec :: { Type }
    : base_type_spec                     { $1 }
    | template_type_spec                 { $1 }
-   | scoped_name                { TyName $1 Nothing }
-   | param_type_spec '[' ']'    { TySafeArray $1 }
-   | param_type_spec '?'        { TyOptional $1 }
+   | scoped_name                        { TyName $1 Nothing }
+   | param_type_spec '[' ']'            { TySafeArray $1 }
+   | param_type_spec '...'              { TySafeArray $1 }
+   | '(' sum_type ')'                   { TySum $2 }
+   | param_type_spec '?'                { TyOptional $1 }
+
+sum_type  :: { [Type] }
+   : param_type_spec                         { [$1] }
+   | sum_type OR param_type_spec     { $3:$1 }
 
 fixed_pt_type   :: { Type }
    : FIXED '<' positive_int_const ',' integer_literal '>' { TyFixed (Just ($3,$5)) }
@@ -501,11 +645,16 @@ string_literal  :: { String }
    : STRING_LIT { $1 }
 
 identifier :: { Id }
-    : ID   { (Id $1) }
-    | DEFAULT { (Id "default") }
+    : ID       { (Id $1) }
+    | ATTRIBUTE { (Id "attribute") }
+    | DEFAULT  { (Id "default") }
     | OPTIONAL { (Id "optional") }
-    | CONTEXT { (Id "context") }
-    
+    | CONTEXT  { (Id "context") }
+    | CALLBACK { (Id "callback") }
+    | REQUIRED { (Id "required") }
+    | RECORD   { (Id "record") }
+    | IMPORT   { (Id "import") }
+
 {------------------ END OF GRAMMAR --------------}
 
 {

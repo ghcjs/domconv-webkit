@@ -43,12 +43,14 @@ data Literal
    deriving ( 
               Show -- for Lex debugging only
             , Eq
+            , Ord
             ) 
 
 data IntegerLit = ILit Int{-base-} Integer
                   deriving (
                              Show -- for Lex debugging only
                            , Eq
+                           , Ord
                            ) 
 iLit :: Integral a => a -> Literal
 iLit x = IntegerLit (ILit 10 (toInteger x))

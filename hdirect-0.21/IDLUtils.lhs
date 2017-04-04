@@ -25,7 +25,7 @@ iName (CConvId _ i) = iName i
 iName (AttrId _ i)  = iName i
 iName (BitFieldId _ i) = iName i
 iName (FunId i _ _) = iName i
-iName Getter = "_get"
+iName Getter = "get"
 
 getDef :: Defn -> String
 getDef d =

@@ -110,10 +110,11 @@ data Size
    deriving (
               Show -- for Lex debugging only
             , Eq
+            , Ord
             ) 
 
 data CallConv = Stdcall | Pascal | Cdecl | Fastcall
-                deriving ( Eq, Show )
+                deriving ( Eq, Ord, Show )
 
 strToCallConv :: String -> Maybe CallConv
 strToCallConv "stdcall" = Just Stdcall
@@ -129,20 +130,21 @@ data BinaryOp
  | Add | Sub | Div | Mod | Mul   
  | LogAnd | LogOr
  | Gt | Ge | Eq | Le | Lt | Ne
- deriving ( Eq, Show ) 
+ deriving ( Eq, Ord, Show ) 
 
 data UnaryOp  
  = Minus | Plus | Not | Negate | Deref
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
 data ShiftDir 
  = L | R
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
 data Qualifier 
  = Const | Volatile
    deriving (
               Show
+            , Ord
             , Eq
             )
 
@@ -150,10 +152,10 @@ data PointerType
   = Ptr 
   | Ref 
   | Unique
-  deriving ( Eq, Show )
+  deriving ( Eq, Ord, Show )
 
 data ParamDir   = In | Out | InOut
-                  deriving (Eq,Show) -- for Lex debugging only
+                  deriving (Eq,Ord,Show) -- for Lex debugging only
 
 isInOut :: ParamDir -> Bool
 isInOut InOut = True

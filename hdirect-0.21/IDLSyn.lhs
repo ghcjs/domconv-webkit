@@ -28,6 +28,7 @@ data Defn
  | Constant   Id [Attribute] Type Expr
  | Attributed [Attribute] Defn
  | Attribute  [Id] Bool Type [Raises] [ExtAttribute]
+ | DictionaryAttribute  [Id] Bool Type [Raises] [ExtAttribute]
  | Operation  Id Type {-[Param]-} [Raises] (Maybe Context) [ExtAttribute]
  | Exception  Id [Defn]
  | Interface  Id Inherit [Defn] [ExtAttribute] (Maybe Id)
@@ -47,6 +48,9 @@ data Defn
  | Pragma       String
  | IncludeStart String
  | IncludeEnd
+ | Serializer
+ | Stringifier
+ | Iterable
    deriving ( Eq, Show )
 
 \end{code}
@@ -71,8 +75,10 @@ data Id
  | CConvId CallConv Id
  | BitFieldId Int   Id
  | Getter
+ | Setter
+ | Deleter
  | FunId Id (Maybe CallConv) [Param]
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
  
 \end{code}
 
@@ -95,6 +101,9 @@ data Type
  | TyString (Maybe Expr)
  | TyWString (Maybe Expr)
  | TySequence Type (Maybe Expr)
+ | TyRecord Type Type
+ | TyPromise Type
+ | TyFrozenArray Type
  | TyFixed (Maybe (Expr, IntegerLit))
  | TyName String (Maybe Type)
  | TyIface Name
@@ -108,11 +117,12 @@ data Type
  | TyPointer Type
  | TyArray Type [Expr]
  | TySafeArray Type
+ | TySum [Type]
  | TyOptional Type
  | TyFun (Maybe CallConv) Type [Param]
  | TyVoid
  | TyQualifier Qualifier
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
 data Expr
  = Binary BinaryOp Expr Expr
@@ -122,9 +132,9 @@ data Expr
  | Lit    Literal
  | Cast   Type Expr
  | Sizeof Type
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
-data Raises = GetRaises [Name] | SetRaises [Name] | Raises [Name] deriving ( Eq, Show )
+data Raises = GetRaises [Name] | SetRaises [Name] | Raises [Name] deriving ( Eq, Ord, Show )
 getterRaises = filter isGet
     where
         isGet (SetRaises _) = False
@@ -138,33 +148,33 @@ type Context = [String]
 
 type CoClassMember = (Bool, Id, [Attribute])
 
-data Optionality = Optional | Required deriving ( Eq, Show )
+data Optionality = Optional | Required deriving ( Eq, Ord, Show )
 
 data Param      = Param Optionality Id Type [Attribute] [ExtAttribute]
-                  deriving ( Eq, Show )
+                  deriving ( Eq, Ord, Show )
 
 type Member     = (Type, [Attribute], [Id])
 
 data Attribute  
  = Attrib Id [AttrParam]  -- name(e1,..,en)
  | Mode ParamDir
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
 data AttrParam 
   = AttrExpr Expr
   | EmptyAttr         -- size_is(,e) => [EmptyAttr,attr_param e]
   | AttrLit Literal
   | AttrPtr AttrParam
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
 data ExtAttribute
   = ExtAttr Id [Param]
-   deriving ( Eq, Show )
+   deriving ( Eq, Ord, Show )
 
 data Switch    = Switch [CaseLabel] (Maybe SwitchArm) 
-                 deriving ( Eq, Show )
+                 deriving ( Eq, Ord, Show )
 data CaseLabel = Case [Expr] | Default
-                 deriving ( Eq, Show )
+                 deriving ( Eq, Ord, Show )
 
 -- switch arms can have attributes along with type and
 -- declarator, just as proc. params.

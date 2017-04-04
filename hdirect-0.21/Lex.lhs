@@ -104,7 +104,7 @@ lexIDL cont = do
      '>'  -> do 
           c1 <- getNextChar
           case c1 of
-            '>' -> cont (T_shift R)
+            -- '>' -> cont (T_shift R)
             '=' -> cont T_ge
             _   -> putBackChar c1 >> cont T_gt
      '|'  -> do
@@ -412,7 +412,7 @@ lex_id cont = do
        Nothing  -> setTok (T_id is) >> setStream rs >> cont (T_id is)
 
 is_id_char :: Char -> Bool
-is_id_char ch = isAlpha ch || isDigit ch || ch == '_' || ch == '$' || ch == '.'
+is_id_char ch = isAlpha ch || isDigit ch || ch == '_' || ch == '$' -- || ch == '.'
 
 dropUntil :: String -> String -> String
 dropUntil _pref [] = []
