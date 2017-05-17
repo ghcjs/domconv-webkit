@@ -47,6 +47,8 @@ data IDLToken
  | T_serializer
  | T_stringifier
  | T_iterable
+ | T_maplike
+ | T_setlike
  | T_implements
  | T_oparen
  | T_cparen
@@ -182,6 +184,8 @@ std_idl_keywords =
     , ("float",         T_float Short)
     , ("in",            T_mode In)
     , ("iterable",      T_iterable)
+    , ("maplike",       T_maplike)
+    , ("setlike",       T_setlike)
     , ("optional",      T_optional)
     , ("required",      T_required)
     , ("or",            T_or_keyword)

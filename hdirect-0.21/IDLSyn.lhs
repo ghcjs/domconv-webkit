@@ -51,6 +51,8 @@ data Defn
  | Serializer
  | Stringifier
  | Iterable
+ | SetLike
+ | MapLike
    deriving ( Eq, Show )
 
 \end{code}

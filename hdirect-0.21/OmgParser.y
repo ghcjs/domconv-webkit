@@ -38,6 +38,8 @@ END_GHC_ONLY
         SERIALIZER    { T_serializer }
         STRINGIFIER   { T_stringifier }
         ITERABLE      { T_iterable }
+        MAPLIKE       { T_maplike }
+        SETLIKE       { T_setlike }
         IMPLEMENTS    { T_implements }
         '('           { T_oparen }
         ')'           { T_cparen }
@@ -194,6 +196,8 @@ export  :: { Defn }
    | serializer_decl ';'      { $1 }
    | stringifier_decl ';'     { $1 }
    | iterable_decl ';'        { $1 }
+   | maplike_decl ';'         { $1 }
+   | setlike_decl ';'         { $1 }
 
 dictionary_exports :: { [Defn] }
    : {-empty-}                  {    []   }
@@ -474,12 +478,16 @@ fixed_array_size  :: { Expr }
 
 attr_decl   :: { Defn }
    : opt_extended_attributes opt_stringifier opt_op_attribute opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $7) $4 $6 $8 $1 }
+   | opt_extended_attributes opt_stringifier opt_op_attribute opt_readonly ATTRIBUTE opt_extended_attributes param_type_spec simple_declarators raises_exprs { Attribute (reverse $8) $4 $7 $9 ($1 ++ $6) }
    | opt_extended_attributes opt_op_attribute opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $6) $3 $5 $7 $1 }
+   | opt_extended_attributes opt_op_attribute opt_readonly ATTRIBUTE opt_extended_attributes param_type_spec simple_declarators raises_exprs { Attribute (reverse $7) $3 $6 $8 ($1 ++ $5) }
    | opt_extended_attributes INHERIT opt_readonly ATTRIBUTE param_type_spec simple_declarators raises_exprs { Attribute (reverse $6) $3 $5 $7 $1 }
 
 dictionary_attr_decl   :: { Defn }
    : opt_extended_attributes opt_required param_type_spec simple_declarators raises_exprs { DictionaryAttribute (reverse $4) $2 $3 $5 $1 }
    | opt_extended_attributes opt_required param_type_spec simple_declarators raises_exprs '=' param_default { DictionaryAttribute (reverse $4) $2 $3 $5 $1 }
+   | opt_required opt_extended_attributes param_type_spec simple_declarators raises_exprs { DictionaryAttribute (reverse $4) $1 $3 $5 $2 }
+   | opt_required opt_extended_attributes param_type_spec simple_declarators raises_exprs '=' param_default { DictionaryAttribute (reverse $4) $1 $3 $5 $2 }
 
 opt_readonly :: { Bool }
    : READONLY   { True } | {-empty-} { False }
@@ -519,6 +527,12 @@ stringifier_decl :: { Defn }
 
 iterable_decl :: { Defn }
    : opt_extended_attributes ITERABLE '<' iterable_declarators '>' { Iterable }
+
+maplike_decl :: { Defn }
+   : opt_extended_attributes opt_op_attribute opt_readonly MAPLIKE '<' identifier ',' identifier '>' { MapLike }
+
+setlike_decl :: { Defn }
+   : opt_extended_attributes opt_op_attribute opt_readonly SETLIKE '<' identifier '>' { SetLike }
 
 iterable_declarators :: { [Id] }
    : iterable_declarator          { [$1] }
@@ -592,6 +606,8 @@ param_decl :: { Param }
    : param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator '=' param_default { Param Optional $5 $4 [$1] $2 }
    | param_attribute opt_extended_attributes OPTIONAL param_type_spec simple_declarator { Param Optional $5 $4 [$1] $2 }
    | param_attribute opt_extended_attributes param_type_spec simple_declarator { Param Required $4 $3 [$1] $2 }
+   | param_attribute OPTIONAL opt_extended_attributes param_type_spec simple_declarator '=' param_default { Param Optional $5 $4 [$1] $3 }
+   | param_attribute OPTIONAL opt_extended_attributes param_type_spec simple_declarator { Param Optional $5 $4 [$1] $3 }
 
 param_attribute :: { Attribute }
    : {-nothing-}        { Mode In }
@@ -646,7 +662,7 @@ string_literal  :: { String }
 
 identifier :: { Id }
     : ID       { (Id $1) }
-    | ATTRIBUTE { (Id "attribute") }
+--    | ATTRIBUTE { (Id "attribute") }
     | DEFAULT  { (Id "default") }
     | OPTIONAL { (Id "optional") }
     | CONTEXT  { (Id "context") }

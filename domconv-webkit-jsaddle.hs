@@ -225,19 +225,6 @@ procopts idl opts = do
 
   return $ M.toList prntmap
 
-getEnums (I.TypeDecl (I.TyEnum (Just (I.Id typename)) _)) = [typename]
-getEnums (I.Module _ defs) = concatMap getEnums defs
-getEnums _ = []
-
-getAllInterfaces (I.Interface (I.Id name) _ _ _ _) = [jsname' name]
-getAllInterfaces (I.Module _ defs) = concatMap getAllInterfaces defs
-getAllInterfaces _ = []
-
-getParents (I.Interface _ names _ _ _) = map jsname' names
-getParents (I.Module _ defs) = concatMap getParents defs
-getParents (I.Implements _ (I.Id i)) = [jsname' i]
-getParents _ = []
-
 -- Write a module surrounded by split begin/end comments
 {-
 maybeNull = ()
@@ -374,7 +361,7 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
                     , "qualified Prelude (error)"
                     , "Data.Typeable (Typeable)"
                     , "Data.Traversable (mapM)"
-                    , "Language.Javascript.JSaddle (JSM(..), JSVal(..), JSString, strictEqual, toJSVal, valToStr, valToNumber, valToBool, js, jss, jsf, jsg, function, new, array, jsUndefined, (!), (!!))"
+                    , "Language.Javascript.JSaddle (JSM(..), JSVal(..), JSString, strictEqual, toJSVal, valToStr, valToNumber, valToBool, js, jss, jsf, jsg, function, asyncFunction, new, array, jsUndefined, (!), (!!))"
                     , "Data.Int (Int64)"
                     , "Data.Word (Word, Word64)"
                     , "JSDOM.Types"
@@ -690,6 +677,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter _ _ (I.TyName "NodeFilter" _) _ _ = []
+    mkgetter _ _ (I.TyOptional (I.TyName "NodeFilter" _)) _ _ = []
     mkgetter iid iat tat' ext r =
         concatMap (\wrapType -> gtsig wrapType (rawReturn wrapType) ++ gimpl wrapType (rawReturn wrapType)) [Normal, Unsafe, Unchecked]
       where
@@ -829,6 +817,7 @@ callbackMethods enums isLeaf intf (I.Operation (I.FunId _ _ parm) resultType _ _
                           (H.HsQVarOp (mkSymbol "<$>"))
           callbackN = show (length parm)
           lambda = H.HsParen (H.HsLambda nullLoc cparms (L.foldl applyCParam (mkVar "callback") parm))
+          call Async = H.HsApp (mkVar "asyncFunction") lambda
           call _ = H.HsApp (mkVar "function") lambda
           rhs = H.HsUnGuardedRhs $ liftDOM $
                 H.HsInfixApp

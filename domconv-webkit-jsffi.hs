@@ -227,19 +227,6 @@ procopts idl opts = do
 
   return $ M.toList prntmap
 
-getEnums (I.TypeDecl (I.TyEnum (Just (I.Id typename)) _)) = [typename]
-getEnums (I.Module _ defs) = concatMap getEnums defs
-getEnums _ = []
-
-getAllInterfaces (I.Interface (I.Id name) _ _ _ _) = [jsname' name]
-getAllInterfaces (I.Module _ defs) = concatMap getAllInterfaces defs
-getAllInterfaces _ = []
-
-getParents (I.Interface _ names _ _ _) = map jsname' names
-getParents (I.Module _ defs) = concatMap getParents defs
-getParents (I.Implements _ (I.Id i)) = [jsname' i]
-getParents _ = []
-
 -- Write a module surrounded by split begin/end comments
 {-
 maybeNull = ()
@@ -693,6 +680,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           retts = H.HsQualType contxt tpsig in
       H.HsTypeSig nullLoc [H.HsIdent defset] retts
     mkgetter _ _ (I.TyName "NodeFilter" _) _ _ = []
+    mkgetter _ _ (I.TyOptional (I.TyName "NodeFilter" _)) _ _ = []
     mkgetter iid iat tat' ext r =
         gjsffi : concatMap (\wrapType -> gtsig wrapType (rawReturn wrapType) ++ gimpl wrapType (rawReturn wrapType)) [Normal, Unsafe, Unchecked]
       where
@@ -1170,7 +1158,7 @@ applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) 
     I.TyName "Bool" Nothing -> defaultCall pname
     I.TyName "boolean" Nothing -> defaultCall pname
     I.TyName "boolen" Nothing -> defaultCall pname
-    I.TyName x Nothing | x `elem` enums ->
+    I.TyName x Nothing | x `elem` ("IceTransportState" : "IceGatheringState" : "RtpTransceiverDirection" : enums)  ->
       if isMaybeType
         then toOptional pname
         else
@@ -1322,7 +1310,7 @@ returnType _ (I.TyName "GLint64" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round
 returnType _ (I.TyName "GLuint64" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen e)
 returnType _ (I.TyName x Nothing) _ _ e | x `elem` glTypes = e
 returnType _(I.TyName "Bool" Nothing) _ _ e = e
-returnType enums (I.TyName x Nothing) _ _ e | x `elem` enums || x == "PerformanceEntryList" =
+returnType enums (I.TyName x Nothing) _ _ e | x `elem` ("IceTransportState" : "IceGatheringState" : "RtpTransceiverDirection" : enums) || x == "PerformanceEntryList" =
         H.HsInfixApp
           (H.HsParen e)
           (H.HsQVarOp (mkSymbol ">>="))

@@ -76,6 +76,10 @@ typeFor  "AlgorithmIdentifier" = "DOMString"
 typeFor  "KeyFormat" = "DOMString"
 -- typeFor  "XMLHttpRequestResponseType" = "DOMString"
 typeFor  "custom" = "CanvasStyle"
+typeFor "IceTransportState" = "RTCIceTransportState"
+typeFor "IceGatheringState" = "RTCIceGatheringState"
+typeFor "RtpTransceiverDirection" = "RTCRtpTransceiverDirection"
+typeFor "TypedArray" = "RawTypedArray"
 typeFor  s = jsname' s
 fixType (I.TyName s x) = I.TyName (typeFor s) x
 fixType (I.TyOptional a) = I.TyOptional (fixType a)
@@ -428,12 +432,29 @@ paramName' "where"   = "where'"
 paramName' "family"  = "family'"
 paramName' p = p
 
+getEnums (I.TypeDecl (I.TyEnum (Just (I.Id typename)) _)) = [typename]
+getEnums (I.Module _ defs) = concatMap getEnums defs
+getEnums _ = []
+
+getAllInterfaces (I.Interface (I.Id name) _ _ _ _) = [jsname' name]
+getAllInterfaces (I.Module _ defs) = concatMap getAllInterfaces defs
+getAllInterfaces _ = []
+
+getParents (I.Interface _ names _ _ _) = map jsname' names
+getParents (I.Module _ defs) = concatMap getParents defs
+getParents (I.Implements _ (I.Id i)) = [jsname' i]
+getParents _ = []
+
 disambiguate "WebGLRenderingContextBase" a b = disambiguate "WebGLRenderingContext" a b
 disambiguate "CSS" "supports" [_, _] = "2"
 disambiguate "CSSStyleSheet" "insertRule" [_, _] = "Deprecated"
 disambiguate "HTMLInputElement" "setRangeText" [_, _, _, _] = "4"
 disambiguate "HTMLTextAreaElement" "setRangeText" [_, _, _, _] = "4"
 disambiguate "Navigator" "vibrate" [I.Param _ _ (I.TySequence _ _) _ _] = "Pattern"
+disambiguate "ApplePaySession" "completeShippingMethodSelection" [I.Param _ _ (I.TyName "ApplePayShippingMethodUpdate" _) _ _] = "Update"
+disambiguate "ApplePaySession" "completeShippingContactSelection" [I.Param _ _ (I.TyName "ApplePayShippingContactUpdate" _) _ _] = "Update"
+disambiguate "ApplePaySession" "completePaymentMethodSelection" [I.Param _ _ (I.TyName "ApplePayPaymentMethodUpdate" _) _ _] = "Update"
+disambiguate "ApplePaySession" "completePayment" [I.Param _ _ (I.TyName "ApplePayPaymentAuthorizationResult" _) _ _] = "Result"
 disambiguate "AudioContext" "createBuffer" [_, _] = "FromArrayBuffer"
 disambiguate "AudioNode" "connect" [I.Param _ _ (I.TyName "AudioParam" _) _ _, _] = "Param"
 disambiguate "CanvasRenderingContext2D" name (I.Param _ _ (I.TyName "Path2D" _) _ _:_) | name `elem` canvasPathFunctionNames = "Path"
@@ -469,6 +490,7 @@ disambiguate "Element" "scroll" [_] = "Opt"
 disambiguate "Element" "scrollTo" [_] = "Opt"
 disambiguate "Element" "scrollBy" [_] = "Opt"
 disambiguate "FormData" "append" [_,_,_] = "Blob"
+disambiguate "HTMLCanvasElement" "toBlob" _ = "'"
 disambiguate "HTMLFormElement" "get" [I.Param _ _ (I.TyName "DOMString" _) _ _] = ""
 disambiguate "HTMLFormElement" "get" _ = "At"
 disambiguate "HTMLSelectElement" "add" [_, I.Param _ (I.Id "before") _ _ _] = "Before"
@@ -485,6 +507,7 @@ disambiguate "Path2D" "addPath" [_, _] = "WithTransform"
 disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "ArrayBufferView" _) _ _] = "View"
 disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "Blob" _) _ _] = "Blob"
 disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "DOMString" _) _ _] = "String"
+disambiguate "RTCDataChannel" "send" [I.Param _ _ (I.TyName "USVString" _) _ _] = "String"
 disambiguate "RTCPeerConnection" "addTransceiver" [I.Param _ (I.Id "track") _ _ _, _] = "Track"
 disambiguate "SourceBuffer" "appendBuffer" [I.Param _ _ (I.TyName "ArrayBufferView" _) _ _] = "View"
 disambiguate "URL" "createObjectURL" [I.Param _ _ (I.TyName "MediaSource" _) _ _] = "Source"
@@ -590,6 +613,8 @@ sumTypesList =
    , ([I.TyName "USVString" Nothing, I.TyName "DOMFormData" Nothing, I.TyName "BufferSource" Nothing, I.TyName "Blob" Nothing], "BodyInit")
    , ([I.TySequence (I.TyName "GLfloat" Nothing) Nothing, I.TyName "Float32Array" Nothing], "Float32List")
    , ([I.TySequence (I.TyName "GLint" Nothing) Nothing, I.TyName "Int32Array" Nothing], "Int32List")
+   , ([I.TyName "RTCIceCandidate" Nothing, I.TyName "RTCIceCandidateInit" Nothing], "RTCIceCandidateOrInit")
+   , ([I.TyName "DOMString" Nothing, I.TyName "MediaStreamTrack" Nothing], "MediaStreamTrackOrKind")
    ]
 
 sumTypes = M.fromList sumTypesList
@@ -601,6 +626,7 @@ sumTypes' = M.fromListWith (<>) . map swap $ sumTypesList <>
     , ([I.TyName "ArrayBuffer" Nothing, I.TyName "ArrayBufferView" Nothing], "BinaryData")
     , ([I.TyName "ArrayBuffer" Nothing, I.TyName "ArrayBufferView" Nothing], "BufferSource")
     , ([I.TyName "ArrayBuffer" Nothing, I.TyName "ArrayBufferView" Nothing], "BufferDataSource")
+    , ([I.TyName "URLSearchParams" Nothing, I.TyName "DOMFormData" Nothing], "CredentialBodyType")
     ]
 
 sumType x = fromMaybe
@@ -884,7 +910,7 @@ asIs enums isLeaf ffi = asIs' enums isLeaf ffi . typeFor
     asIs' _ isLeaf ffi a | isLeaf a       = Just $ mkTIdent a
     asIs' _ _ _ "DOMString"               = Just $ mkTIdent "String"
     asIs' _ _ _ "DOMTimeStamp"            = Just $ mkTIdent "Word"
-    asIs' _ _ _ "CompareHow"                 = Just $ mkTIdent "Word"
+    asIs' _ _ _ "CompareHow"              = Just $ mkTIdent "Word"
     asIs' _ _ _ x | x `elem` glTypes      = Just $ mkTIdent x
     asIs' _ _ _ "Bool"                    = Just $ mkTIdent "Bool"
     asIs' _ _ _ "bool"                    = Just $ mkTIdent "Bool"
@@ -903,6 +929,7 @@ makeOptional t = I.TyOptional t
 
 overrideAttributeType "Node" "parentElement" t = makeOptional t
 overrideAttributeType "MouseEvent" "dataTransfer" t = makeOptional t
+overrideAttributeType "Window" "location" (I.TyOptional t) = t
 overrideAttributeType _ _ t = t
 
 overrideReturnType "FileList" "item" t = makeOptional t
@@ -949,6 +976,7 @@ mkParentMap defns = m2 where
   impls name = fromMaybe [] (M.lookup (jsname' name) mimpls)
 
 isStringType (I.TyName "DOMString" Nothing) = True
+isStringType (I.TyName "CSSOMString" Nothing) = True
 isStringType (I.TyName "ByteString" Nothing) = True
 isStringType (I.TyName "USVString" Nothing) = True
 isStringType _ = False
@@ -1004,7 +1032,7 @@ tyRet' _ _ True (I.TyOptional (I.TySequence t _)) _ = mkTIdent "JSVal"
 --tyRet' pname enums False (I.TyOptional t@(I.TyName c Nothing)) ext
 --    | isNothing (asIs [] (const False) False c) = tyRet' pname enums False t ext
 tyRet' pname enums True (I.TyOptional t) ext
-    = case tyRet' pname enums True t ext of
+    = case tyRet' pname [] True t ext of
             r@(H.HsTyApp (H.HsTyVar (H.HsIdent "Nullable")) _) -> r
             hsType -> H.HsTyApp (mkTIdent "Nullable") hsType
 tyRet' pname enums False (I.TyOptional t) ext
@@ -1022,6 +1050,7 @@ tyRet' _ _ True (I.TyName "GLintptr" Nothing) _ = mkTIdent "Double"
 tyRet' _ _ True (I.TyName "GLsizeiptr" Nothing) _ = mkTIdent "Double"
 tyRet' _ _ True (I.TyName "GLint64" Nothing) _ = mkTIdent "Double"
 tyRet' _ _ True (I.TyName "GLuint64" Nothing) _ = mkTIdent "Double"
+tyRet' _ _ _ (I.TyName "TypedArray" Nothing) _ = mkTIdent $ typeFor "RawTypedArray"
 tyRet' _ enums ffi (I.TyName c Nothing) _ = case asIs enums (const False) ffi c of
   Nothing | ffi -> mkTIdent $ typeFor c
   Nothing -> mkTIdent $ typeFor c
