@@ -124,7 +124,7 @@ makeWebkitBindings idl args = do
     ffiExports name allParents =
             "  , " ++ name ++ "(" ++ name ++ "), un" ++ name
             ++ (if name `elem` allParents then ", Is" ++ name ++ ", to" ++ name else "")
-            ++ ", " ++ "gType" ++ name
+            ++ ", no" ++ name ++ ", gType" ++ name
 
     jsffiTypes hh prntmap allParents =
         forM_ prntmap $ \(n, parents) -> hPutStrLn hh $
@@ -171,6 +171,10 @@ makeWebkitBindings idl args = do
             ++ "instance IsGObject " ++ name ++ " where\n"
             ++ "  typeGType _ = gType" ++ name ++ "\n"
             ++ "  {-# INLINE typeGType #-}\n"
+
+            ++ "no" ++ name ++ " :: Maybe " ++ name ++ "\n"
+            ++ "no" ++ name ++ " = Nothing\n"
+            ++ "{-# INLINE no" ++ name ++ " #-}\n\n"
 
             ++ "foreign import javascript unsafe \"window[\\\"" ++ jsname name ++ "\\\"]\" gType" ++ name ++ " :: GType\n"
     webkitTypes hh prntmap allParents =
