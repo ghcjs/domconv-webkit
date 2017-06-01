@@ -642,8 +642,6 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
     mkattr (I.Attribute [I.Id iat] _ (I.TyName "EventHandler" _) _ _) = mkevent iid iat
     mkattr (I.Attribute [I.Id _] _ (I.TyName t _) _ _) | getDef intf `elem` ["Window", "WorkerGlobalScope"]
                                                          && "Constructor" `isSuffixOf` t = []
-    mkattr (I.Attribute [I.Id iat@"responseText"] _ tat raises ext) | getDef intf == "XMLHttpRequest"
-        = mkgetter iid iat tat (I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] : ext) raises
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
       (if I.ExtAttr (I.Id "Replaceable") [] `elem` ext
         then []
@@ -1033,168 +1031,6 @@ mkMethod meth args rett = H.HsDo [let1, let2, ret] where
                          (mkVar "r"))
                        (H.HsList $ map (cast "et") args'))
 
--- Obtain a return type signature from a return type
-
-
---tyRet :: [String] -> I.Type -> [I.ExtAttribute] -> WrapType -> Maybe H.HsType
---tyRet enums t ext Normal = Just (tyRet' "result" enums t ext)
---tyRet enums t ext Underscore = case tyRet' "result" enums t ext of
---    H.HsTyTuple [] -> Nothing
---    _ -> Just (H.HsTyTuple [])
---tyRet enums t ext Unsafe = case tyRet' "result" enums t ext of
---    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) (H.HsTyApp (H.HsTyCon (H.Special H.HsListCon)) x)) -> Nothing
---    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) x) -> Just x
---    _ -> Nothing
---tyRet enums t ext Unchecked = case tyRet' "result" enums t ext of
---    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) (H.HsTyApp (H.HsTyCon (H.Special H.HsListCon)) x)) -> Nothing
---    (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) x) -> Just x
---    _ -> Nothing
---
---tyRet' :: String -> [String] -> I.Type -> [I.ExtAttribute] -> H.HsType
---
---tyRet' _ enums (I.TyName "object" Nothing) _
---    = H.HsTyApp (mkTIdent "Maybe") (mkTIdent "GObject")
---tyRet' pname _ (I.TyName "DOMString" Nothing) ext
---    | I.ExtAttr (I.Id "TreatReturnedNullStringAs") []  `elem` ext
---           || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext
---        = H.HsTyApp (mkTIdent "Maybe") $ mkTIdent (paramName' pname)
---    | otherwise = mkTIdent (paramName' pname)
---tyRet' pname _ (I.TyName "ByteString" Nothing) ext
---    | I.ExtAttr (I.Id "TreatReturnedNullStringAs") []  `elem` ext
---           || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext
---        = H.HsTyApp (mkTIdent "Maybe") $ mkTIdent (paramName' pname)
---    | otherwise = mkTIdent (paramName' pname)
---tyRet' pname _ (I.TyName "USVString" Nothing) ext
---    | I.ExtAttr (I.Id "TreatReturnedNullStringAs") []  `elem` ext
---           || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext
---        = H.HsTyApp (mkTIdent "Maybe") $ mkTIdent (paramName' pname)
---    | otherwise = mkTIdent (paramName' pname)
-----tyRet' pname enums (I.TyOptional t@(I.TyName c Nothing)) ext
-----    | isNothing (asIs enums (const False) c) = tyRet' pname enums t ext
---tyRet' pname enums (I.TyOptional t) ext
---    = case tyRet' pname enums t ext of
---            r@(H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _) -> r
---            hsType -> H.HsTyApp (mkTIdent "Maybe") hsType
---tyRet' pname enums (I.TySafeArray t) ext = mkTyList (tyRet' pname enums t ext)
---tyRet' pname enums (I.TyFrozenArray t) ext = mkTyList (tyRet' pname enums t ext)
---tyRet' pname enums (I.TySequence t _) ext = mkTyList (tyRet' pname enums t ext)
---tyRet' _ enums (I.TyName c Nothing) _ = case asIs enums (const False) False c of
---  Nothing -> mkTIdent $ typeFor c
---  Just c' -> c'
---tyRet' _ _ I.TyVoid _ = H.HsTyTuple []
---tyRet' _ _ (I.TyInteger LongLong) _ = mkTIdent "Int64"
---tyRet' _ _ (I.TyInteger _) _ = mkTIdent "Int"
---tyRet' _ _ (I.TyFloat Short) _ = mkTIdent "Float"
---tyRet' _ _ (I.TyFloat _) _ = mkTIdent "Double"
---tyRet' _ _ (I.TyApply (I.TySigned False) (I.TyInteger LongLong)) _ = mkTIdent "Word64"
---tyRet' _ _ (I.TyApply (I.TySigned False) (I.TyInteger _)) _ = mkTIdent "Word"
---tyRet' _ _ (I.TyApply _ (I.TyInteger LongLong)) _ = mkTIdent "Int64"
---tyRet' _ _ (I.TyApply _ (I.TyInteger _)) _ = mkTIdent "Int"
---tyRet' _ _ I.TyObject _ = mkTIdent "GObject"
---tyRet' _ _ I.TyAny _ = mkTIdent "JSVal"
---tyRet' pname enums (I.TyPromise t) ext = tyRet' pname enums t ext
---tyRet' pname enums (I.TySum t) ext = mkTIdent (sumType t)
---tyRet' pname enums (I.TyRecord (I.TyName a _) (I.TyName b _)) ext = H.HsTyApp (H.HsTyApp (mkTIdent "Record") (mkTIdent $ typeFor a)) (mkTIdent $ typeFor b)
---tyRet' _ _ t _ = error $ "Return type " ++ show t
---
---eventTyRet :: (String -> Bool) -> String -> String -> H.HsType
---eventTyRet isLeaf interface eventName =
---  H.HsTyApp
---    (H.HsTyApp
---      (mkTIdent "EventName")
---      (tySelf isLeaf interface)
---    )
---    (mkTIdent $ eventType interface eventName)
-
--- The same, for a concrete type
---
---cnRet :: I.Type -> H.HsType
---
---cnRet (I.TyName c Nothing) = case asIs c of
---  Nothing -> mkTIdent ('T' : c)
---  Just c' -> mkTIdent c'
---cnRet z = tyRet z
-
--- Obtain a return type context (if any) from a return type
-
---ctxSelf :: (String -> Bool) -> String -> [H.HsAsst]
---ctxSelf isLeaf t | isLeaf t  = []
---                 | otherwise = [(mkUIdent (classFor t),[mkTIdent "self"])]
---
---tySelf :: (String -> Bool) -> String -> H.HsType
---tySelf isLeaf t | isLeaf t  = mkTIdent (typeFor t)
---                | otherwise = mkTIdent "self"
---
---ffiTySelf intf = mkTIdent (typeFor $ getDef intf)
---
---ctxRet :: WrapType -> I.Type -> [H.HsAsst]
---ctxRet Underscore _ = []
---ctxRet Unsafe t = (mkUIdent "HasCallStack", []) : ctxRet Normal t
---ctxRet _ t = ctxRet' "result" t
---
---ctxRet' :: String -> I.Type -> [H.HsAsst]
---
---ctxRet' pname t | isStringType t = [(mkUIdent "FromJSString", [mkTIdent (paramName' pname)])]
-----ctxRet' pname (I.TyName "XMLHttpRequestResponseType" Nothing) = [(mkUIdent "FromJSString", [mkTIdent (paramName pname)])]
-----ctxRet (I.TyName c Nothing) = case (asIs False c) of
-----  Nothing -> [(mkUIdent $ classFor c, [mkTIdent "self"])]
-----  Just c' -> []
---ctxRet' pname (I.TySequence t _) = ctxRet' pname t
---ctxRet' pname (I.TySafeArray t) = ctxRet' pname t
---ctxRet' pname (I.TyFrozenArray t) = ctxRet' pname t
---ctxRet' pname (I.TyOptional t) = ctxRet' pname t
---ctxRet' pname (I.TyPromise t) = ctxRet' pname t
---ctxRet' pname _ = []
-
--- Obtain a type signature from a parameter definition
-
---tyParm :: [String] -> (String -> Bool) -> I.Param -> (H.HsType, [H.HsAsst])
---tyParm enums isLeaf param@(I.Param optional (I.Id _) ptype [I.Mode In] ext) =
---  if optional == I.Optional && canBeMaybe ptype
---    then
---        case lookup ptype of
---            r@(H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _, _) -> r
---            r@(H.HsTyApp (H.HsTyCon (H.Special H.HsListCon)) _, _) -> r
---            (hsType, hsAsst) -> (H.HsTyApp (mkTIdent "Maybe") hsType, hsAsst)
---    else lookup ptype
--- where
---  p = mkTIdent (paramName param)
---  canBeNull = I.ExtAttr (I.Id "TreatNullAs") []  `elem` ext
---  lookup ptype =
---   case ptype of
---    I.TyOptional t | isStringType t -> lookup t
---                   | otherwise ->
---        case lookup t of
---            r@(H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _, _) -> r
---            (hsType, hsAsst) -> (H.HsTyApp (mkTIdent "Maybe") hsType, hsAsst)
---    I.TySequence t _ -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
---    I.TySafeArray t  -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
---    I.TyFrozenArray t  -> let (hsType, hsAsst) = lookup t in (mkTyList hsType, hsAsst)
---    I.TyName c Nothing | c `elem` ["NotificationPermissionCallback", "StringCallback"] ->
---                                        (H.HsTyApp (mkTIdent (typeFor c)) p, [(mkUIdent "ToJSString", [p])])
---    t | isStringType t && canBeNull -> (H.HsTyApp (mkTIdent "Maybe") p, [(mkUIdent "ToJSString", [p])])
---      | isStringType t -> (p, [(mkUIdent "ToJSString", [p])])
---    I.TyName "DOMString..." Nothing  -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSVal", [p])])
---    I.TyName c Nothing -> case asIs enums isLeaf False c of
---      Just cc       -> (cc, [])
---      _             -> (p, [(mkUIdent $ classFor c, [p])])
---    I.TyInteger LongLong -> (mkTIdent "Int64",[])
---    I.TyInteger _ -> (mkTIdent "Int",[])
---    I.TyFloat Short -> (mkTIdent "Float",[])
---    I.TyFloat _ -> (mkTIdent "Double",[])
---    I.TyApply (I.TySigned False) (I.TyInteger LongLong) -> (mkTIdent "Word64",[])
---    I.TyApply (I.TySigned False) (I.TyInteger _) -> (mkTIdent "Word",[])
---    I.TyApply _ (I.TyInteger LongLong) -> (mkTIdent "Int64",[])
---    I.TyApply _ (I.TyInteger _) -> (mkTIdent "Int",[])
---    I.TyAny -> (p, [(mkUIdent "ToJSVal", [p])])
---    I.TyPromise t -> lookup t
---    I.TySum t -> let c = sumType t in case asIs enums isLeaf False c of
---      Just cc       -> (cc, [])
---      _             -> (p, [(mkUIdent $ classFor c, [p])])
---    I.TyRecord (I.TyName a _) (I.TyName b _) -> (H.HsTyApp (H.HsTyApp (mkTIdent "Record") (mkTIdent $ typeFor a)) (mkTIdent $ typeFor b), [])
---    t -> error $ "Param type " ++ show t
---
---tyParm' _ _ _ param@I.Param{} = error $ "Unsupported parameter attributes " ++ show param
 
 -- Apply a parameter to a FFI call
 
@@ -1229,133 +1065,6 @@ defaultUndefined :: I.Optionality -> H.HsExp -> H.HsExp
 defaultUndefined I.Optional e = H.HsApp (H.HsApp (mkVar "maybe") (H.HsParen (H.HsApp (mkVar "return") (mkVar "jsUndefined")))) e
 defaultUndefined _ e = e
 
---applyParam :: [String] -> (String -> Bool) -> I.Param -> H.HsExp -> H.HsExp
---
---applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) call = lookup ptype where
---  pname = mkVar $ paramName param
---  canBeNull = I.ExtAttr (I.Id "TreatNullAs") []  `elem` ext
---  lookup ptype =
---   case ptype of
---    I.TyOptional t@(I.TyName c Nothing) | isNothing (asIs [] (const False) c) -> lookup t
---    I.TyOptional (I.TyName "DOMString" Nothing) ->
---      H.HsApp
---        call
---        (H.HsParen
---          (H.HsApp
---            (mkVar (if canBeNull then "toMaybeJSString" else "toJSString"))
---            pname
---          )
---        )
---    I.TyOptional (I.TySequence t _) ->
---        H.HsInfixApp
---          (H.HsApp
---            (mkVar "toJSVal")
---            (mkVar (paramName param))
---          )
---          (H.HsQVarOp (mkSymbol ">>="))
---          (H.HsLambda nullLoc [H.HsPVar (H.HsIdent $ paramName param ++ "'")]
---            (H.HsApp call (mkVar $ paramName param ++ "'"))
---          )
---    I.TySequence t _ ->
---        H.HsInfixApp
---          (H.HsApp
---            (mkVar "toJSVal")
---            (mkVar (paramName param))
---          )
---          (H.HsQVarOp (mkSymbol ">>="))
---          (H.HsLambda nullLoc [H.HsPVar (H.HsIdent $ paramName param ++ "'")]
---            (H.HsApp call (mkVar $ paramName param ++ "'"))
---          )
---    I.TySafeArray t ->
---        H.HsInfixApp
---          (H.HsApp
---            (mkVar "toJSVal")
---            (mkVar (paramName param))
---          )
---          (H.HsQVarOp (mkSymbol ">>="))
---          (H.HsLambda nullLoc [H.HsPVar (H.HsIdent $ paramName param ++ "'")]
---            (H.HsApp call (mkVar $ paramName param ++ "'"))
---          )
-----    I.TyName "DOMString" Nothing | optional == I.Optional ->
-----      H.HsApp
-----        call
-----        (H.HsParen
-----          (H.HsApp
-----            (H.HsApp
-----              (H.HsApp
-----                (mkVar "maybe")
-----                (mkVar "jsNull")
-----              )
-----              (mkVar "toJSString")
-----            )
-----            pname
-----          )
-----        )
---    I.TyName "DOMString" Nothing -> H.HsApp call (H.HsParen $ H.HsApp (mkVar (if canBeNull then "toMaybeJSString" else "toJSString")) pname)
---    I.TyName "DOMString..." Nothing ->
---        H.HsInfixApp
---          (H.HsApp
---            (mkVar "toJSVal")
---            (mkVar (paramName param))
---          )
---          (H.HsQVarOp (mkSymbol ">>="))
---          (H.HsLambda nullLoc [H.HsPVar (H.HsIdent $ paramName param ++ "'")]
---            (H.HsApp call (mkVar $ paramName param ++ "'"))
---          )
---    I.TyName "DOMTimeStamp" Nothing -> H.HsApp call pname
---    I.TyName "CompareHow" Nothing -> H.HsApp call pname
---    I.TyName "GLintptr" Nothing -> H.HsApp call pname -- (H.HsParen $ H.HsApp (mkVar "fromIntegral") pname)
---    I.TyName "GLsizeiptr" Nothing -> H.HsApp call pname -- (H.HsParen $ H.HsApp (mkVar "fromIntegral") pname)
---    I.TyName "GLint64" Nothing -> H.HsApp call pname -- (H.HsParen $ H.HsApp (mkVar "fromIntegral") pname)
---    I.TyName "GLuint64" Nothing -> H.HsApp call pname -- (H.HsParen $ H.HsApp (mkVar "fromIntegral") pname)
---    I.TyName x Nothing | x `elem` glTypes -> H.HsApp call pname
---    I.TyName "Bool" Nothing -> H.HsApp call pname
---    I.TyName x Nothing | x `elem` enums ->
---      H.HsApp
---        call
---        (H.HsParen
---          (H.HsApp
---            (mkVar "pToJSVal")
---            pname
---          )
---        )
---    I.TyName x Nothing | isLeaf x ->
---      H.HsApp
---        call
---        (H.HsParen
---          (H.HsApp
---            (mkVar "maybeToNullable")
---            pname
---          )
---        )
---                       | otherwise ->
---      H.HsApp
---        call
---        (H.HsParen
---          (H.HsApp
---            (mkVar "maybeToNullable")
---            (H.HsParen
---              (H.HsApp
---                (H.HsApp
---                  (mkVar "fmap")
---                  (mkVar $ "to" ++ typeFor x)
---                )
---                pname
---              )
---            )
---          )
---        )
---    I.TyInteger LongLong -> H.HsApp call pname -- (H.HsParen $ H.HsApp (mkVar "fromIntegral") pname)
---    I.TyInteger _ -> H.HsApp call pname
---    I.TyFloat Short -> H.HsApp call pname
---    I.TyFloat _   -> H.HsApp call pname
---    I.TyApply _ (I.TyInteger LongLong) -> H.HsApp call pname -- (H.HsParen $ H.HsApp (mkVar "fromIntegral") pname)
---    I.TyApply _ (I.TyInteger _) -> H.HsApp call pname
---    I.TyAny -> H.HsApp call pname
---    t -> error $ "Apply Param type " ++ show t
---
---applyParam _ _ param@I.Param{} _ = error $ "Unsupported parameter attributes " ++ show param
-
 returnType :: [String] ->  I.Type -> [I.ExtAttribute] -> WrapType -> H.HsExp -> H.HsExp
 returnType _ _ _ Underscore e =
         H.HsApp
@@ -1371,38 +1080,17 @@ returnType enums t ext Unsafe e =
               (H.HsParen (H.HsApp (mkVar "Prelude.error") (H.HsLit $ H.HsString "Nothing to return"))))
               (mkVar "return"))
 returnType _ (I.TyName "DOMString" Nothing) ext wrapType e
-    | wrapType /= Unchecked &&
-      ( I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
-     || I.ExtAttr (I.Id "TreatNullAs")               [] `elem` ext)
-        = H.HsInfixApp
-                    (H.HsParen e)
-                    (H.HsQVarOp (mkSymbol ">>="))
-                    (mkVar "fromMaybeJSString")
-    | otherwise = H.HsInfixApp
+    = H.HsInfixApp
                     (H.HsParen e)
                     (H.HsQVarOp (mkSymbol ">>="))
                     (mkVar "fromJSValUnchecked")
 returnType _ (I.TyName "ByteString" Nothing) ext wrapType e
-    | wrapType /= Unchecked &&
-      ( I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
-     || I.ExtAttr (I.Id "TreatNullAs")               [] `elem` ext)
-        = H.HsInfixApp
-                    (H.HsParen e)
-                    (H.HsQVarOp (mkSymbol ">>="))
-                    (mkVar "fromMaybeJSString")
-    | otherwise = H.HsInfixApp
+    = H.HsInfixApp
                     (H.HsParen e)
                     (H.HsQVarOp (mkSymbol ">>="))
                     (mkVar "fromJSValUnchecked")
 returnType _ (I.TyName "USVString" Nothing) ext wrapType e
-    | wrapType /= Unchecked &&
-      ( I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
-     || I.ExtAttr (I.Id "TreatNullAs")               [] `elem` ext)
-        = H.HsInfixApp
-                    (H.HsParen e)
-                    (H.HsQVarOp (mkSymbol ">>="))
-                    (mkVar "fromMaybeJSString")
-    | otherwise = H.HsInfixApp
+    = H.HsInfixApp
                     (H.HsParen e)
                     (H.HsQVarOp (mkSymbol ">>="))
                     (mkVar "fromJSValUnchecked")

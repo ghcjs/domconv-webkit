@@ -637,8 +637,6 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
     mkattr (I.Attribute [I.Id iat] _ (I.TyName "EventHandler" _) _ _) = mkevent iid iat
     mkattr (I.Attribute [I.Id _] _ (I.TyName t _) _ _) | getDef intf `elem` ["Window", "WorkerGlobalScope"]
                                                          && "Constructor" `isSuffixOf` t = []
-    mkattr (I.Attribute [I.Id iat@"responseText"] _ tat raises ext) | getDef intf == "XMLHttpRequest"
-        = mkgetter iid iat tat (I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] : ext) raises
     mkattr (I.Attribute [I.Id iat] False tat raises ext) =
       (if I.ExtAttr (I.Id "Replaceable") [] `elem` ext
         then []
@@ -1060,7 +1058,7 @@ applyParam :: [String] -> (String -> Bool) -> I.Param -> H.HsExp -> H.HsExp
 
 applyParam enums isLeaf param@(I.Param optional (I.Id p) ptype [I.Mode In] ext) call = lookup ptype where
   pname = mkVar $ paramName param
-  canBeNull = I.ExtAttr (I.Id "TreatNullAs") []  `elem` ext || (optional == I.Optional && canBeMaybe ptype)
+  canBeNull = optional == I.Optional && canBeMaybe ptype
   isMaybeType = case tyParm enums isLeaf param of
                     (H.HsTyApp (H.HsTyVar (H.HsIdent "Maybe")) _, _) -> True
                     _ -> False
@@ -1291,10 +1289,7 @@ returnType enums t ext Unsafe e =
               (H.HsParen (H.HsApp (mkVar "Prelude.error") (H.HsLit $ H.HsString "Nothing to return"))))
               (mkVar "return"))
 returnType _ t ext wrapType e
-    | isOptionalStringType t || (isStringType t &&
-      ( I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
-     || I.ExtAttr (I.Id "TreatNullAs")               [] `elem` ext))
-        = H.HsApp (H.HsApp (
+    | isOptionalStringType t = H.HsApp (H.HsApp (
             (if wrapType == Unchecked
                 then H.HsInfixApp (mkVar "fromJust") (H.HsQVarOp (mkSymbol "."))
                 else id)

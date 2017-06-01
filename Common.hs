@@ -1018,13 +1018,7 @@ tyRet' _ enums ffi (I.TyName "object" Nothing) _
     | ffi = H.HsTyApp (mkTIdent "Nullable") (mkTIdent "GObject")
     | otherwise = H.HsTyApp (mkTIdent "Maybe") (mkTIdent "GObject")
 tyRet' pname _ ffi t ext
-    | isStringType t && ffi && (I.ExtAttr (I.Id "TreatReturnedNullStringAs") [] `elem` ext
-           || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext)
-        = H.HsTyApp (mkTIdent "Nullable") $ mkTIdent "JSString"
     | isStringType t && ffi = mkTIdent "JSString"
-    | isStringType t && (I.ExtAttr (I.Id "TreatReturnedNullStringAs") []  `elem` ext
-           || I.ExtAttr (I.Id "TreatNullAs") [] `elem` ext)
-        = H.HsTyApp (mkTIdent "Maybe") $ mkTIdent (paramName' pname)
     | isStringType t = mkTIdent (paramName' pname)
 tyRet' _ _ True (I.TyOptional (I.TySequence t _)) _ = mkTIdent "JSVal"
 --tyRet ffi (I.TyOptional t@(I.TyName c Nothing)) | isNothing (asIs ffi c) = tyRet ffi t
@@ -1147,7 +1141,6 @@ tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In] ext)
     else lookup ptype
  where
   p = mkTIdent (paramName param)
-  canBeNull = I.ExtAttr (I.Id "TreatNullAs") []  `elem` ext
   lookup ptype =
    case ptype of
     I.TyOptional t@(I.TySequence _ _) | ffi -> (mkTIdent "JSVal", [])
@@ -1180,11 +1173,7 @@ tyParm' enums isLeaf ffi param@(I.Param optional (I.Id _) ptype [I.Mode In] ext)
                                         (H.HsTyApp (mkTIdent (typeFor c)) p), [])
                                  | otherwise -> (H.HsTyApp (mkTIdent "Maybe")
                                         (H.HsTyApp (mkTIdent (typeFor c)) p), [(mkUIdent "ToJSString", [p])])
-    t | isStringType t && ffi && canBeNull -> (H.HsTyApp (mkTIdent "Optional")
-                                                       (mkTIdent "JSString"), [])
-      | isStringType t && ffi -> (mkTIdent "JSString", [])
---    | isStringType t && optional == I.Optional -> (H.HsTyApp (mkTIdent "Maybe") p, [(mkUIdent "ToJSString", [p])])
-      | isOptionalStringType t || (isStringType t && canBeNull) -> (H.HsTyApp (mkTIdent "Maybe") p, [(mkUIdent "ToJSString", [p])])
+    t | isStringType t && ffi -> (mkTIdent "JSString", [])
       | isStringType t -> (p, [(mkUIdent "ToJSString", [p])])
     I.TyName "DOMString..." Nothing | ffi -> (mkTIdent "JSVal", [])
                                     | otherwise -> (mkTIdent $ "[" ++ paramName param ++ "]", [(mkUIdent "ToJSString", [p]), (mkUIdent "ToJSVal", [p])])
