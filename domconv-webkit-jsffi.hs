@@ -1376,7 +1376,17 @@ returnType _ (I.TyOptional _) _ _ e =
 --            _ -> error "Issue with wrapType?")
 --          (H.HsQVarOp (mkSymbol "<$>"))
 --          (H.HsParen e)
-returnType enums (I.TyPromise t) ext wrapType e = returnType enums t ext wrapType e
+returnType enums (I.TyPromise I.TyVoid) ext wrapType e =
+        H.HsInfixApp
+          (H.HsParen e)
+          (H.HsQVarOp (mkSymbol ">>="))
+          (mkVar "maybeThrowPromiseRejected")
+returnType enums (I.TyPromise t) ext wrapType e =
+        returnType enums t ext wrapType $
+            H.HsInfixApp
+              (H.HsParen e)
+              (H.HsQVarOp (mkSymbol ">>="))
+              (mkVar "checkPromiseResult")
 --returnType _ (I.TySum _) _ _ e =
 --        H.HsInfixApp
 --          (H.HsParen e)
@@ -1391,7 +1401,7 @@ returnType _ _ _ _ e = e
 
 jsReturn :: I.Type -> JExpr -> String
 jsReturn (I.TyName "Bool" Nothing) e = show $ renderJs [jmacroE| `(e)`?1:0 |]
-jsReturn (I.TyPromise _) e = show $ renderJs [jmacro| `(e)`.then($c); |]
+jsReturn (I.TyPromise _) e = show (renderJs [jmacroE| `(e)` |]) <> ".then(function(s) { $c(null, s);}, function(e) { $c(e, null);});"
 jsReturn _ e = show $ renderJs e
 
 gtkName s =
