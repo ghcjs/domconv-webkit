@@ -55,7 +55,7 @@ main = do
   p <- getProgName
   args <- getArgs
   case args of
-    [] -> putStrLn "Usage: domconv-webkit webkit.idl -Iwebkit-1.8.0/Source/WebCore"
+    [] -> putStrLn "Usage: domconv-webkit-jsffi webkit.idl -Iwebkit-1.8.0/Source/WebCore"
     idl:args -> makeWebkitBindings idl args
 
 makeWebkitBindings idl args = do
@@ -269,11 +269,13 @@ prettyJS (H.HsModule pos m mbExports imp decls) comment = intercalate "\n" $
        prettyPrint (H.HsModule pos m mbExports imp [])
      : map prettyDecl decls >>= lines >>= gaurdFromJSValUnchecked
   where
-    prettyDecl d@(H.HsForeignImport nullLoc "javascript" H.HsUnsafe _ (H.HsIdent defop) tpsig) = prettyPrint d
-    prettyDecl d@(H.HsForeignImport nullLoc "javascript interruptible" H.HsUnsafe _ (H.HsIdent defop) tpsig) = unlines . map (\l ->
-        case stripPrefix "foreign import javascript interruptible unsafe" l of
-            Nothing -> l
-            Just x -> "foreign import javascript interruptible" <> x) . lines $ prettyPrint d
+    prettyDecl d@(H.HsForeignImport nullLoc "javascript" _ _ (H.HsIdent defop) tpsig) = prettyPrint d
+    prettyDecl d@(H.HsForeignImport nullLoc "javascript interruptible" _ _ (H.HsIdent defop) tpsig) = unlines . map (\l ->
+        case ( stripPrefix "foreign import javascript interruptible unsafe" l
+             , stripPrefix "foreign import javascript interruptible safe" l )of
+          (Nothing, Nothing) -> l
+          (_, Just x) -> "foreign import javascript interruptible" <> x
+          (Just x, _) -> "foreign import javascript interruptible" <> x) . lines $ prettyPrint d
     prettyDecl d@(H.HsTypeSig _ [H.HsIdent n] _) = concat $ catMaybes [comment n, Just $ prettyPrint d]
     prettyDecl d = prettyPrint d
     interfaceName = stripPrefix "GHCJS.DOM." $ modName m
@@ -661,8 +663,11 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           parms = ffiTySelf intf : map (fst . tyParmFFI enums isLeaf) parm
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType [] tpsig
-          jsimpl = show . renderJs $ [jmacro| $1[`(iat)`] = $2 |] in
-       H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
+          jsimpl = show . renderJs $ [jmacro| $1[`(iat)`] = $2 |]
+          safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+                               _ -> False) ext
+                   then H.HsSafe else H.HsUnsafe
+      in H.HsForeignImport nullLoc "javascript" safe jsimpl (H.HsIdent defop) tpsig
     simpl iid iat tat ext raises =
       let defset = iid ++ "|" ++ iat ++ "|" ++ setf intf iat
           ffi = H.HsVar . H.UnQual . H.HsIdent $ "js_" ++ setf intf iat
@@ -696,8 +701,11 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
               promise = case tat of
                             (I.TyPromise _) -> True
                             _ -> False
-              jsimpl = jsReturn tat $ [jmacroE| $1[`(iat)`] |] in
-           H.HsForeignImport nullLoc (if promise then "javascript interruptible" else "javascript") H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
+              jsimpl = jsReturn tat $ [jmacroE| $1[`(iat)`] |]
+              safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+                                   _ -> False) ext
+                       then H.HsSafe else H.HsUnsafe
+          in H.HsForeignImport nullLoc (if promise then "javascript interruptible" else "javascript") safe jsimpl (H.HsIdent defop) tpsig
         rawReturn = tyRet enums False tat ext
         gimpl _ Nothing = []
         gimpl wrapType (Just retType) =
@@ -898,8 +906,11 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
                         error "Unexpected constuctor parameter DOMString..." -- show . renderJs $ [jmacroE| window[`(jsname (getDef intf))`].apply(window, $1) |]
                     _ ->
                         show . renderJs $ ApplExpr (callNew (getDef intf))
-                            (map (\(n, _) -> jsv $ '$':show n) $ zip [1..] parm) in
-       H.HsForeignImport nullLoc "javascript" H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
+                            (map (\(n, _) -> jsv $ '$':show n) $ zip [1..] parm)
+          safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+                               _ -> False) at
+                   then H.HsSafe else H.HsUnsafe
+       in H.HsForeignImport nullLoc "javascript" safe jsimpl (H.HsIdent defop) tpsig
     constructortsig (postfix, parm) =
       let monadtv = mkTIdent "m"
           defop = getDef intf ++ "||" ++ constructorName ++ postfix
@@ -947,8 +958,11 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
                             jsReturn optype [jmacroE| $1[$2] |]
                         _ ->
                             jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
-                                (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm) in
-           H.HsForeignImport nullLoc (if promise then "javascript interruptible" else "javascript") H.HsUnsafe jsimpl (H.HsIdent defop) tpsig
+                                (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm)
+              safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+                                   _ -> False) ext
+                       then H.HsSafe else H.HsUnsafe
+          in H.HsForeignImport nullLoc (if promise then "javascript interruptible" else "javascript") safe jsimpl (H.HsIdent defop) tpsig
         rawReturn = tyRet enums False optype ext
         tsig _ Nothing = []
         tsig wrapType (Just retType) =
