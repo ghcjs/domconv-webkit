@@ -664,7 +664,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
           tpsig = mkTsig parms (H.HsTyApp monadtv $ H.HsTyCon (H.Special H.HsUnitCon))
           retts = H.HsQualType [] tpsig
           jsimpl = show . renderJs $ [jmacro| $1[`(iat)`] = $2 |]
-          safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+          safe = if any (\case I.ExtAttr (I.Id str) _ -> str `elem` ["SetterMayThrowException", "MayThrowException"];
                                _ -> False) ext
                    then H.HsSafe else H.HsUnsafe
       in H.HsForeignImport nullLoc "javascript" safe jsimpl (H.HsIdent defop) tpsig
@@ -702,7 +702,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
                             (I.TyPromise _) -> True
                             _ -> False
               jsimpl = jsReturn tat $ [jmacroE| $1[`(iat)`] |]
-              safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+              safe = if any (\case I.ExtAttr (I.Id str) _ -> str `elem` ["GetterMayThrowException", "MayThrowException"];
                                    _ -> False) ext
                        then H.HsSafe else H.HsUnsafe
           in H.HsForeignImport nullLoc (if promise then "javascript interruptible" else "javascript") safe jsimpl (H.HsIdent defop) tpsig
@@ -907,7 +907,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
                     _ ->
                         show . renderJs $ ApplExpr (callNew (getDef intf))
                             (map (\(n, _) -> jsv $ '$':show n) $ zip [1..] parm)
-          safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+          safe = if any (\case I.ExtAttr (I.Id str) _ -> str `elem` ["ConstructorMayThrowException", "MayThrowException"];
                                _ -> False) at
                    then H.HsSafe else H.HsUnsafe
        in H.HsForeignImport nullLoc "javascript" safe jsimpl (H.HsIdent defop) tpsig
@@ -959,7 +959,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
                         _ ->
                             jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
                                 (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm)
-              safe = if any (\case I.ExtAttr (I.Id str) _ -> "MayThrowException" `isSuffixOf` str;
+              safe = if any (\case I.ExtAttr (I.Id str) _ -> str == "MayThrowException";
                                    _ -> False) ext
                        then H.HsSafe else H.HsUnsafe
           in H.HsForeignImport nullLoc (if promise then "javascript interruptible" else "javascript") safe jsimpl (H.HsIdent defop) tpsig
