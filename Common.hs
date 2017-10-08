@@ -437,6 +437,7 @@ eventAsync _ "ontimeout" = True
 eventAsync _ "onopen" = True
 eventAsync _ "onclose" = True
 eventAsync _ "onmessage" = True
+eventAsync _ "onreadystatechange" = True
 eventAsync _ _ = False
 
 paramName (I.Param _ (I.Id p) _ _ _) = paramName' p
