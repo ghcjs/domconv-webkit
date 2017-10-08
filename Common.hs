@@ -423,6 +423,22 @@ eventType _ "onexit" = "Event"
 eventType _ "onwebkitpresentationmodechanged" = "Event"
 eventType i e                                 = trace ("Please add:\neventType _ \"" ++ e ++ "\" = \"Event\"") e
 
+eventAsync _ "onfocus" = True
+eventAsync _ "onblur" = True
+eventAsync ('I':'D':'B':_) "onabort" = False -- Index DB abort event bubbles
+eventAsync _ "onabort" = True
+eventAsync ('I':'D':'B':_) "onerror" = False -- Index DB error event bubbles
+eventAsync _ "onerror" = True
+eventAsync _ "onload" = True
+eventAsync _ "onloadend" = True
+eventAsync _ "onloadstart" = True
+eventAsync _ "onprogress" = True
+eventAsync _ "ontimeout" = True
+eventAsync _ "onopen" = True
+eventAsync _ "onclose" = True
+eventAsync _ "onmessage" = True
+eventAsync _ _ = False
+
 paramName (I.Param _ (I.Id p) _ _ _) = paramName' p
 
 paramName' "data"    = "data'"

@@ -401,7 +401,7 @@ splitModule allParents (H.HsModule _ modid mbexp imps decls) = submods where
       eventImp "JSDOM.UIEvent" = []
       eventImp "JSDOM.MouseEvent" = []
       eventImp "JSDOM.EventTarget" = []
-      eventImp _ = ["JSDOM.EventTargetClosures (EventName, unsafeEventName)"]
+      eventImp _ = ["JSDOM.EventTargetClosures (EventName, unsafeEventName, unsafeEventNameAsync)"]
       docimp = []
 --      docimp = case "createElement" `elem` (map declname smdecls) of
 --        True -> []
@@ -658,6 +658,9 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
     setf intf iat = U.toLowerInitCamel $ "set" ++ U.toUpperHead iat
     getf intf iat = U.toLowerInitCamel $ "get" ++ U.toUpperHead iat
     eventName iat = fromMaybe iat (stripPrefix "on" iat)
+    eventNameBuild intf iat = if eventAsync (getDef intf) iat
+                                    then "unsafeEventNameAsync"
+                                    else "unsafeEventName"
     eventf intf iat = U.toLowerInitCamel $ fixEventName (getDef intf) iat
     simpl iid iat tat ext raises =
       let defset = iid ++ "|" ++ iat ++ "|" ++ setf intf iat
@@ -709,7 +712,7 @@ intf2attr enums isLeaf intf@(I.Interface (I.Id iid') _ cldefs _ _) =
       let defget = iid ++ "|" ++ iat ++ "|" ++ eventf intf iat
           rhs = H.HsUnGuardedRhs $
                 H.HsApp
-                    (mkVar "unsafeEventName")
+                    (mkVar (eventNameBuild intf iat))
                     (H.HsParen
                         (H.HsApp
                             (mkVar "toJSString")
