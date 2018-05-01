@@ -1,3 +1,5 @@
 /dist/
 /.cabal-sandbox/
 /dist-newstyle/
+domconv-webkit.lkshf
+dist-ghcjs

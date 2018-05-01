@@ -29,7 +29,7 @@ data Defn
  | Attributed [Attribute] Defn
  | Attribute  [Id] Bool Type [Raises] [ExtAttribute]
  | DictionaryAttribute  [Id] Bool Type [Raises] [ExtAttribute]
- | Operation  Id Type {-[Param]-} [Raises] (Maybe Context) [ExtAttribute]
+ | Operation  Id Bool Type {-[Param]-} [Raises] (Maybe Context) [ExtAttribute]
  | Exception  Id [Defn]
  | Interface  Id Inherit [Defn] [ExtAttribute] (Maybe Id)
  | Implements Id Id

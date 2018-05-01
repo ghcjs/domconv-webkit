@@ -821,7 +821,7 @@ mkGetter prop arg rett = H.HsDo [let1, let2, ret] where
 -- goes last to make monadic composition of actions easier.
 
 callbackMethods :: [String] -> (String -> Bool) -> I.Defn -> I.Defn -> [H.HsDecl]
-callbackMethods enums isLeaf intf (I.Operation (I.FunId _ _ parm) resultType _ _ _) =
+callbackMethods enums isLeaf intf (I.Operation (I.FunId _ _ parm) _ resultType _ _ _) =
     [f callbackType | callbackType <- [SyncContinueAsync, SyncThrowWouldBlock, Async], f <- [tsig, timpl]]
   where
     defop callbackType = getDef intf ++ "||new" ++ getDef intf ++ callbackPostfix callbackType
@@ -890,7 +890,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
     _ -> concatMap mkmeth (collectOps intf)) ++
   concatMap mkconst (collectConst intf) where
     getDefHs = getDef
-    getDefJs op@(I.Operation _ _ _ mbctx _) = case mbctx of
+    getDefJs op@(I.Operation _ _ _ _ mbctx _) = case mbctx of
       Nothing -> getDef op
       Just [] -> getDef op
       Just (s:_) -> s
@@ -937,10 +937,10 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
           crhs = H.HsUnGuardedRhs (H.HsLit (H.HsInt val))
       in  [H.HsFunBind [match]]
 --    mkmeth (I.Operation _ _ _ _ ext) | I.ExtAttr (I.Id "V8EnabledAtRuntime") [] `elem` ext = []
-    mkmeth (I.Operation _ _ _ _ exAttr) | not (visible exAttr) = []
-    mkmeth (I.Operation (I.FunId (I.Id "handleEvent") _ _) _ _ _ exAttr) | getDef intf `notElem` ["EventListener", "EventHandler"] = error $ "Unexpected handleEvent function in " ++ show intf
+    mkmeth (I.Operation _ _ _ _ _ exAttr) | not (visible exAttr) = []
+    mkmeth (I.Operation (I.FunId (I.Id "handleEvent") _ _) _ _ _ _ exAttr) | getDef intf `notElem` ["EventListener", "EventHandler"] = error $ "Unexpected handleEvent function in " ++ show intf
     mkmeth op | skip op = []
-    mkmeth op@(I.Operation (I.FunId _ _ parm) optype' raises _ ext) =
+    mkmeth op@(I.Operation (I.FunId _ _ parm) isStatic optype' raises _ ext) =
         jsffi : concatMap (\wrapType -> tsig wrapType (rawReturn wrapType) ++ timpl wrapType (rawReturn wrapType)) [Normal, Underscore, Unsafe, Unchecked]
       where
         optype = overrideReturnType (getDef intf) (name op parm) optype'
@@ -948,7 +948,7 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
         jsffi =
           let monadtv = mkTIdent "IO"
               defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ jsffiName op parm
-              parms = ffiTySelf intf : map (fst . tyParmFFI enums isLeaf) parm
+              parms = (if isStatic then id else (ffiTySelf intf :)) $ map (fst . tyParmFFI enums isLeaf) parm
               tpsig = mkTsig parms (H.HsTyApp monadtv $ fromJust $ tyRet enums True optype ext Normal)
               retts = H.HsQualType [] tpsig
               promise = case optype of
@@ -959,6 +959,9 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
                             jsReturn optype $ [jmacroE| $1[`(getDef op)`].apply($1, $2) |]
                         [p] | isGetter ->
                             jsReturn optype [jmacroE| $1[$2] |]
+                        _ | isStatic ->
+                            jsReturn optype $ ApplExpr [jmacroE| window[`(jsname (getDef intf))`][`(getDef op)`] |]
+                                (map (\(n, _) -> jsv $ '$':show n) $ zip [1..] parm)
                         _ ->
                             jsReturn optype $ ApplExpr [jmacroE| $1[`(getDef op)`] |]
                                 (map (\(n, _) -> jsv $ '$':show n) $ zip [2..] parm)
@@ -972,8 +975,8 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
           let monadtv = mkTIdent "m"
               -- exprtv = mkTIdent "Expression"
               defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ wrapName wrapType (name op parm)
-              parms = tySelf isLeaf (getDef intf) : map (fst . tyParm enums isLeaf) parm
-              contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : ctxSelf isLeaf (getDef intf) ++ concatMap (snd . tyParm enums isLeaf) parm ++ ctxRet wrapType optype
+              parms = (if isStatic then id else (tySelf isLeaf (getDef intf) :)) $ map (fst . tyParm enums isLeaf) parm
+              contxt = (mkUIdent "MonadIO", [mkTIdent "m"]) : (if isStatic then [] else ctxSelf isLeaf (getDef intf)) ++ concatMap (snd . tyParm enums isLeaf) parm ++ ctxRet wrapType optype
               -- monadctx = (mkUIdent "Monad",[monadtv])
               tpsig = mkTsig parms (H.HsTyApp monadtv retType)
               retts = H.HsQualType contxt tpsig in
@@ -982,8 +985,8 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
         timpl wrapType (Just retType) =
           let defop = getDef intf ++ "|" ++ rawName op ++ "|" ++ wrapName wrapType (name op parm)
               ffi = H.HsVar . H.UnQual . H.HsIdent $ jsffiName op parm
-              parms = map (H.HsPVar . H.HsIdent) ("self" : map paramName parm)
-              call = applySelf isLeaf (getDef intf) ffi
+              parms = map (H.HsPVar . H.HsIdent) ((if isStatic then id else ("self" :)) $ map paramName parm)
+              call = if isStatic then ffi else applySelf isLeaf (getDef intf) ffi
               -- params' = map (\I.Param (I.Id "val") tat [I.Mode In] parm
               rhs = H.HsUnGuardedRhs $ H.HsApp (mkVar "liftIO") . H.HsParen $ returnType enums optype ext wrapType $ L.foldl (flip $ applyParam enums isLeaf) call parm
     --          rhs = H.HsUnGuardedRhs $ mkMethod (getDefJs op) parms (tyRet optype)
@@ -996,10 +999,10 @@ intf2meth enums isLeaf intf@(I.Interface _ _ cldefs at mbCB) =
     jsffiConstructorName = "js_new" ++ getDef intf
     jsffiName op parm = "js_" ++ name op parm
     -- Only EventTarget needs these (the rest use an IsEventTarget to get them)
-    skip (I.Operation (I.FunId (I.Id "addEventListener") _ _) _ _ _ _) = getDef intf /= "EventTarget"
-    skip (I.Operation (I.FunId (I.Id "removeEventListener") _ _) _ _ _ _) = getDef intf /= "EventTarget"
-    skip (I.Operation (I.FunId (I.Id "dispatchEvent") _ _) _ _ _ _) = getDef intf /= "EventTarget"
-    skip op@(I.Operation (I.FunId _ _ parm) _ _ _ _) = any excludedParam parm || exclude (getDef intf) (rawName op) parm
+    skip (I.Operation (I.FunId (I.Id "addEventListener") _ _) _ _ _ _ _) = getDef intf /= "EventTarget"
+    skip (I.Operation (I.FunId (I.Id "removeEventListener") _ _) _ _ _ _ _) = getDef intf /= "EventTarget"
+    skip (I.Operation (I.FunId (I.Id "dispatchEvent") _ _) _ _ _ _ _) = getDef intf /= "EventTarget"
+    skip op@(I.Operation (I.FunId _ _ parm) _ _ _ _ _) = any excludedParam parm || exclude (getDef intf) (rawName op) parm
     excludedParam _ = False
     canvasPathFunctionNames = [
         "fill",

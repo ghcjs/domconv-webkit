@@ -158,8 +158,8 @@ interface :: { Defn }
 
 interface_decl :: { Defn }
    : interface_header '{' exports '}'  { let (at, ty,ids,inherit) = $1 in Interface ids inherit (reverse $3) at ty }
-   | opt_extended_attributes CALLBACK identifier '=' op_type_spec parameter_decls raises_exprs mb_context_expr { Interface $3 [] [Operation (FunId (Id "callback") Nothing $6) $5 $7 $8 []] $1 (Just (Id "callback")) }
-   | CALLBACK identifier '=' op_type_spec parameter_decls raises_exprs mb_context_expr { Interface $2 [] [Operation (FunId (Id "callback") Nothing $5) $4 $6 $7 []] [] (Just (Id "callback")) }
+   | opt_extended_attributes CALLBACK identifier '=' op_type_spec parameter_decls raises_exprs mb_context_expr { Interface $3 [] [Operation (FunId (Id "callback") Nothing $6) False $5 $7 $8 []] $1 (Just (Id "callback")) }
+   | CALLBACK identifier '=' op_type_spec parameter_decls raises_exprs mb_context_expr { Interface $2 [] [Operation (FunId (Id "callback") Nothing $5) False $4 $6 $7 []] [] (Just (Id "callback")) }
 
 interface_header :: { ([ExtAttribute], Maybe Id, Id, Inherit) }
    : opt_extended_attributes INTERFACE identifier opt_inheritance_spec { ($1,Nothing,$3,$4) }
@@ -544,10 +544,10 @@ iterable_declarator ::  { Id }
 
 op_decl :: { Defn }
    : opt_extended_attributes opt_op_attribute op_type_spec identifier parameter_decls raises_exprs mb_context_expr
-                { Operation (FunId $4 Nothing $5) $3 $6 $7 $1 }
-   | opt_extended_attributes GETTER getter_type_spec getter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) $3 re ctx (ExtAttr (Id "Getter") []:$1) }
-   | opt_extended_attributes SETTER op_type_spec setter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) $3 re ctx $1 }
-   | opt_extended_attributes DELETER op_type_spec deleter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) $3 re ctx $1 }
+                { Operation (FunId $4 Nothing $5) $2 $3 $6 $7 $1 }
+   | opt_extended_attributes GETTER getter_type_spec getter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) False $3 re ctx (ExtAttr (Id "Getter") []:$1) }
+   | opt_extended_attributes SETTER op_type_spec setter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) False $3 re ctx $1 }
+   | opt_extended_attributes DELETER op_type_spec deleter_decl { let (id, pr, re, ctx) = $4 in Operation (FunId id Nothing pr) False $3 re ctx $1 }
 
 -- getter_id :: { Id }
 --    : identifier  { $1 }
@@ -573,8 +573,8 @@ deleter_decl :: { (Id, [Param], [Raises], Maybe Context)  }
 
 opt_op_attribute :: { Bool }
    : {-nothing-}                        { False }
-   | ONEWAY                             { True  }
-   | STATIC                             { False  }
+   | ONEWAY                             { False  }
+   | STATIC                             { True  }
 --    | GETTER                             { False  } -- TODO
 
 getter_type_spec :: { Type }
