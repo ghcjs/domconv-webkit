@@ -1090,21 +1090,17 @@ returnType enums t ext Unsafe e =
               (mkVar "maybe")
               (H.HsParen (H.HsApp (mkVar "Prelude.error") (H.HsLit $ H.HsString "Nothing to return"))))
               (mkVar "return"))
-returnType _ (I.TyName "DOMString" Nothing) ext wrapType e
-    = H.HsInfixApp
-                    (H.HsParen e)
-                    (H.HsQVarOp (mkSymbol ">>="))
-                    (mkVar "fromJSValUnchecked")
-returnType _ (I.TyName "ByteString" Nothing) ext wrapType e
-    = H.HsInfixApp
-                    (H.HsParen e)
-                    (H.HsQVarOp (mkSymbol ">>="))
-                    (mkVar "fromJSValUnchecked")
-returnType _ (I.TyName "USVString" Nothing) ext wrapType e
-    = H.HsInfixApp
-                    (H.HsParen e)
-                    (H.HsQVarOp (mkSymbol ">>="))
-                    (mkVar "fromJSValUnchecked")
+returnType _ t ext wrapType e
+    | isOptionalStringType t && wrapType /= Unchecked =
+        H.HsInfixApp
+          (H.HsParen e)
+          (H.HsQVarOp (mkSymbol ">>="))
+          (mkVar "fromMaybeJSString")
+    | isStringType t =
+        H.HsInfixApp
+          (H.HsParen e)
+          (H.HsQVarOp (mkSymbol ">>="))
+          (mkVar "fromJSValUnchecked")
 returnType _ (I.TyName "DOMTimeStamp" Nothing) _ _ e = H.HsApp (H.HsApp (mkVar "round") (mkVar "<$>")) (H.HsParen (
     H.HsInfixApp
           (H.HsParen e)
